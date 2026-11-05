@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "log-viewer-rules": {
+      "command": "D:/ai_workspace/LogViewer/src-tauri/target/debug/log-viewer-mcp.exe",
+      "args": []
+    }
+  }
+}

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/x-log">
+    <comment>Log file</comment>
+    <glob pattern="*.log"/>
+  </mime-type>
+  <mime-type type="application/x-logviewer-alog">
+    <comment>LogViewer alog</comment>
+    <glob pattern="*.alog"/>
+  </mime-type>
+  <mime-type type="application/x-logviewer-xlog">
+    <comment>LogViewer xlog</comment>
+    <glob pattern="*.xlog"/>
+  </mime-type>
+  <mime-type type="application/x-logviewer-logs">
+    <comment>LogViewer logs</comment>
+    <glob pattern="*.logs"/>
+  </mime-type>
+</mime-info>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>默认解析卡片 · Linear 属性行</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" />
+<style>
+  /* 参照 Linear 议题详情：状态点贴着标题，属性右对齐，行间不画线。色仍取工作台纸色与赤褐。 */
+  :root {
+    --paper: #f4efe6;
+    --panel: #faf7f1;
+    --ink: #1c1915;
+    --muted: #5c564c;
+    --line: #d7cfc1;
+    --fault: #b5451b;
+    --accent: #3d5a45;
+    --white: #fffcf7;
+    --serif: "Newsreader", Georgia, serif;
+    --sans: "IBM Plex Sans", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  .app { height: 100vh; display: flex; flex-direction: column; }
+  .chrome {
+    height: 42px; display: flex; align-items: center; gap: 14px; padding: 0 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .brand { font-family: var(--serif); font-size: 16px; }
+  .crumb { font-size: 13px; color: var(--muted); }
+  .workspace { flex: 1; display: flex; min-height: 0; }
+  .log { flex: 1; padding: 16px 20px; }
+  .log-line {
+    display: grid; grid-template-columns: 36px 1fr; gap: 12px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.75; border-radius: 6px;
+  }
+  .log-line.on { background: #e8dcc6; }
+  .ln { color: var(--muted); text-align: right; }
+  .pane {
+    width: 420px; border-left: 1px solid var(--line); display: flex; flex-direction: column;
+    background: #efe8dc;
+  }
+  .pane-head {
+    height: 42px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; font-size: 13px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  .follow { font-size: 12px; color: var(--muted); }
+  .stack { padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+  .card { background: var(--white); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 12px; }
+  .card.on { box-shadow: 0 10px 24px rgba(60, 40, 10, 0.06); }
+  .meta { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+  .title-row { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; }
+  .lamp { width: 9px; height: 9px; border-radius: 50%; margin-top: 7px; flex: none; }
+  .lamp.bad { background: var(--fault); }
+  .lamp.ok { background: var(--accent); }
+  h2 { margin: 0; font-size: 18px; font-weight: 560; letter-spacing: -0.02em; line-height: 1.3; }
+  .props { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .prop { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; font-size: 14px; }
+  .prop span { color: var(--muted); font-size: 13px; }
+  .prop b { font-weight: 500; text-align: right; }
+  .prop b.mono { font-family: var(--mono); font-weight: 450; }
+  .prop b.bad { color: var(--fault); }
+  .hex {
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+    display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+  }
+  .hex span { font-size: 12px; color: var(--muted); }
+  .hex code { font-family: var(--mono); font-size: 14px; }
+  .clauses { margin: 12px 0 0; font-size: 15px; line-height: 1.7; }
+  .hx { font-family: var(--mono); letter-spacing: 0.03em; }
+  .mean { color: var(--fault); }
+  .note { margin: 8px 2px 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="chrome">
+      <div class="brand">LogViewer</div>
+      <div class="crumb">ttyS7 · 高盛咖啡机 1.5F</div>
+    </div>
+    <div class="workspace">
+      <section class="log">
+        <div class="log-line on"><span class="ln">128</span><span>2026-11-02 00:00:01.283  Device:/dev/ttyS7  &lt;  A5 5A 06 1E 00 00 02 22 47</span></div>
+        <div class="log-line"><span class="ln">136</span><span>2026-11-02 00:00:03.110  Device:/dev/ttyS7  &lt;  A5 5A 06 1E 00 00 00 00 …</span></div>
+      </section>
+      <aside class="pane">
+        <div class="pane-head"><strong>解析结果</strong><span class="follow">跟随开</span></div>
+        <div class="stack">
+          <article class="card on">
+            <div class="meta">L128 · 接收</div>
+            <div class="title-row">
+              <i class="lamp bad"></i>
+              <h2>设备状态应答</h2>
+            </div>
+            <p class="clauses"><span class="hx">1E</span>：设备状态应答；<span class="hx">00 00 02 22</span>：<span class="mean">ST_INFO1  ABNORMAL · 前门故障 · 无盖</span>；</p>
+          </article>
+          <article class="card">
+            <div class="meta">L136 · 接收</div>
+            <div class="title-row">
+              <i class="lamp ok"></i>
+              <h2>设备状态应答</h2>
+            </div>
+            <p class="clauses"><span class="hx">1E</span>：设备状态应答；<span class="hx">00 00 00 00</span>：ST_INFO1  NORMAL；</p>
+          </article>
+          <p class="note">同命令的正常读数。没有命中故障，故障行不出现。</p>
+        </div>
+      </aside>
+    </div>
+  </div>
+</body>
+</html>
