@@ -53,7 +53,8 @@ pub struct LineRule {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrameDef {
-    /// `length_prefix` (default, AA55-style) or `mdb_adapter`.
+    /// `length_prefix` (default, AA55-style), `mdb_adapter`, or `mixed`
+    /// (AA55 when headers match, otherwise MDB).
     #[serde(default = "default_frame_kind")]
     pub kind: String,
     #[serde(default)]
@@ -102,6 +103,9 @@ pub struct CommandDef {
     /// Exact total frame length in bytes (optional match filter).
     #[serde(default)]
     pub len: Option<usize>,
+    /// Optional payload prefix after the command byte (length-prefix / mixed).
+    #[serde(default)]
+    pub payload_prefix: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,13 +263,16 @@ fn validate_pack(pack: &RulePack) -> AppResult<()> {
     if pack.line_rules.is_empty() {
         return Err(path_err("$.line_rules", "至少需要一条行规则"));
     }
-    if pack.frame.kind != "length_prefix" && pack.frame.kind != "mdb_adapter" {
+    if pack.frame.kind != "length_prefix"
+        && pack.frame.kind != "mdb_adapter"
+        && pack.frame.kind != "mixed"
+    {
         return Err(path_err(
             "$.frame.kind",
-            "只能是 length_prefix 或 mdb_adapter",
+            "只能是 length_prefix、mdb_adapter 或 mixed",
         ));
     }
-    if pack.frame.kind == "length_prefix"
+    if (pack.frame.kind == "length_prefix" || pack.frame.kind == "mixed")
         && (pack.frame.tx_header.is_empty() || pack.frame.rx_header.is_empty())
     {
         return Err(path_err("$.frame", "tx_header / rx_header 不能为空"));

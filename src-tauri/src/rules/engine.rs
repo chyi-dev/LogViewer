@@ -158,6 +158,18 @@ fn is_mdb_adapter(pack: &CompiledPack) -> bool {
     pack.pack.frame.kind == "mdb_adapter"
 }
 
+fn is_mixed(pack: &CompiledPack) -> bool {
+    pack.pack.frame.kind == "mixed"
+}
+
+fn header_for_dir<'a>(pack: &'a CompiledPack, dir: &str) -> &'a [u8] {
+    if dir == "tx" {
+        &pack.pack.frame.tx_header
+    } else {
+        &pack.pack.frame.rx_header
+    }
+}
+
 fn parse_line(
     pack: &CompiledPack,
     line_no: usize,
@@ -177,9 +189,65 @@ fn parse_line(
         if is_mdb_adapter(pack) {
             return Some(decode_mdb_frame(pack, line_no, &dir, &bytes, last_tx));
         }
+        if is_mixed(pack) {
+            let header = header_for_dir(pack, &dir);
+            if matches_header(&bytes, header) {
+                return Some(decode_frame(pack, line_no, &dir, &bytes));
+            }
+            return Some(decode_mdb_frame(pack, line_no, &dir, &bytes, last_tx));
+        }
         return Some(decode_frame(pack, line_no, &dir, &bytes));
     }
     None
+}
+
+/// Pick the most specific length-prefix / mixed AA55 command.
+/// Skips entries with `role` (MDB-only). Optional `dir` / `len` / `payload_prefix` must match.
+fn find_length_prefix_command<'a>(
+    pack: &'a CompiledPack,
+    dir: &str,
+    cmd: u8,
+    frame_len: usize,
+    payload: &[u8],
+) -> Option<&'a CommandDef> {
+    let mut best: Option<(&'a CommandDef, i32)> = None;
+    for d in &pack.pack.commands {
+        if d.role.is_some() {
+            continue;
+        }
+        if d.cmd != cmd {
+            continue;
+        }
+        if let Some(want_dir) = d.dir.as_deref() {
+            if want_dir != dir {
+                continue;
+            }
+        }
+        if let Some(want_len) = d.len {
+            if want_len != frame_len {
+                continue;
+            }
+        }
+        if !d.payload_prefix.is_empty() {
+            if payload.len() < d.payload_prefix.len()
+                || payload[..d.payload_prefix.len()] != d.payload_prefix[..]
+            {
+                continue;
+            }
+        }
+        let mut score = 1;
+        if d.dir.is_some() {
+            score += 2;
+        }
+        if d.len.is_some() {
+            score += 4;
+        }
+        score += (d.payload_prefix.len() as i32) * 10;
+        if best.map(|(_, s)| score > s).unwrap_or(true) {
+            best = Some((d, score));
+        }
+    }
+    best.map(|(c, _)| c)
 }
 
 fn format_hex_frame(bytes: &[u8]) -> String {
@@ -323,7 +391,11 @@ fn find_mdb_command<'a>(
     reply_bind: Option<LastTx>,
 ) -> Option<&'a CommandDef> {
     let mut best: Option<(&CommandDef, i32)> = None;
+    let require_role = is_mixed(pack);
     for cmd in &pack.pack.commands {
+        if require_role && cmd.role.is_none() {
+            continue;
+        }
         if expect_role == "reply" {
             let Some(bind) = reply_bind else {
                 continue;
@@ -759,7 +831,9 @@ fn decode_frame(pack: &CompiledPack, line_no: usize, dir: &str, bytes: &[u8]) ->
         &[][..]
     };
 
-    let command = cmd.and_then(|c| pack.pack.commands.iter().find(|d| d.cmd == c));
+    let command = cmd.and_then(|c| {
+        find_length_prefix_command(pack, dir, c, bytes.len(), payload)
+    });
     let (title, cmd_label) = if let Some(cmd_def) = command {
         let title = if dir == "tx" {
             cmd_def.title.clone()
@@ -1764,5 +1838,109 @@ mod tests {
     #[test]
     fn mdb_pack_loads() {
         let _ = mdb_pack();
+    }
+
+    const MIXED_PACK: &str = r#"{
+      "id":"test-mixed","name":"test-mixed","version":"1",
+      "line_rules":[
+        {
+          "id":"device-arrow",
+          "pattern":"^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+Device:\\S+\\s+([><])\\s+([0-9A-Fa-f ]+)$",
+          "dir_group":2,"dir_map":{">":"tx","<":"rx"},"hex_group":3,"time_group":1
+        },
+        {
+          "id":"payment-arrow",
+          "pattern":"^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+Payment:\\S+\\s+([><])\\s+([0-9A-Fa-f ]+)$",
+          "dir_group":2,"dir_map":{">":"tx","<":"rx"},"hex_group":3,"time_group":1
+        }
+      ],
+      "frame":{
+        "kind":"mixed",
+        "tx_header":[170,85],"rx_header":[165,90],
+        "checksum":"sum8_before_last",
+        "device_bases":[48]
+      },
+      "commands":[
+        {"cmd":32,"name":"PayStatus","title":"读取支付设备状态","len":5},
+        {
+          "cmd":32,"name":"PayStatusRx","title":"读取支付设备状态","len":8,
+          "decode":[
+            {"type":"uint","id":"d1","offset":0,"width":1,"endian":"be","label":"找零器"},
+            {"type":"flags","from":"d1","bits":[{"bit":0,"label":"A148 找零器离线","fault":true,"code":"A148"}]}
+          ]
+        },
+        {
+          "cmd":32,"name":"MainVersion","title":"旧-控制板基本信息","len":11,
+          "payload_prefix":[1,3,2,35,0,6]
+        },
+        {"cmd":30,"name":"DeviceStatus","title":"查询设备状态","len":5},
+        {"cmd":17,"sub":0,"dir":"tx","role":"command","checksum":"none","name":"Setup","title":"刷卡器初始化"},
+        {
+          "cmd":17,"sub":0,"dir":"rx","role":"reply","checksum":"sum8_tail","name":"SetupReply","title":"刷卡器配置应答"
+        },
+        {"cmd":0,"dir":"rx","role":"control","checksum":"none","name":"ACK","title":"ACK","len":1}
+      ]
+    }"#;
+
+    fn mixed_pack() -> CompiledPack {
+        CompiledPack::compile(parse_rulepack_json(MIXED_PACK).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn mixed_routes_aa55_and_mdb() {
+        let pack = mixed_pack();
+        let text = "\
+2026-08-14 15:34:58.529 Payment:/dev/ttyS9 > AA 55 02 20 21
+2026-08-14 15:34:58.558 Device:/dev/ttyS7 > AA 55 02 1E 1F
+2026-08-14 15:35:00.000 Device:/dev/ttyS7 > AA 55 08 20 01 03 02 23 00 06 56
+2026-08-17 10:41:36.684 Payment:/dev/ttyS9 > 11 00 03 00 00 00
+2026-08-17 10:41:36.700 Payment:/dev/ttyS9 < 00
+";
+        let events = parse_document(&pack, text);
+        assert_eq!(events.len(), 5);
+        assert!(events[0].title.contains("支付"), "{}", events[0].title);
+        assert!(events[1].title.contains("设备状态"), "{}", events[1].title);
+        assert!(events[2].title.contains("控制板"), "{}", events[2].title);
+        assert!(events[3].title.contains("刷卡器初始化"), "{}", events[3].title);
+        assert_eq!(events[4].title, "ACK");
+    }
+
+    #[test]
+    fn mixed_pay_status_rx_not_main() {
+        let pack = mixed_pack();
+        let text = "2026-08-14 15:34:58.646 Payment:/dev/ttyS9 < A5 5A 05 20 00 00 00 24\n";
+        let events = parse_document(&pack, text);
+        assert_eq!(events.len(), 1);
+        assert!(events[0].title.contains("支付"), "{}", events[0].title);
+    }
+
+    #[test]
+    fn gaosheng_jk_pack_distinguishes_channels() {
+        let raw = include_str!("../../assets/rules/gaosheng-jk.json");
+        let pack = CompiledPack::compile(parse_rulepack_json(raw).unwrap()).unwrap();
+        let text = "\
+2026-08-14 15:34:58.529 Payment:/dev/ttyS9 > AA 55 02 20 21
+2026-08-14 15:35:44.800 Payment:/dev/ttyS9 > AA 55 05 21 01 00 0A 30
+2026-08-14 15:35:47.394 Payment:/dev/ttyS9 > AA 55 02 23 24
+2026-08-14 15:56:00.000 Payment:/dev/ttyS9 > AA 55 0B 28 02 DA AF 60 02 00 00 03 DE 00
+2026-08-14 15:56:10.000 Payment:/dev/ttyS9 > AA 55 0E 2A 00 00 00 00 00 00 00 00 00 00 03 DE 18
+2026-08-14 15:34:58.558 Device:/dev/ttyS7 > AA 55 02 1E 1F
+2026-08-17 10:42:00.000 Device:/dev/ttyS7 < A5 5A 03 0C 05 13
+2026-08-17 10:42:01.000 Device:/dev/ttyS7 > AA 55 08 20 01 03 02 23 00 06 56
+2026-08-17 10:41:36.684 Payment:/dev/ttyS9 > 11 00 03 00 00 00
+2026-08-17 10:41:36.700 Payment:/dev/ttyS9 < 30 09
+";
+        let events = parse_document(&pack, text);
+        assert_eq!(events.len(), 10);
+        assert!(events[0].title.contains("支付"), "{}", events[0].title);
+        assert!(events[1].title.contains("支付配置"), "{}", events[1].title);
+        assert!(events[2].title.contains("金额"), "{}", events[2].title);
+        assert!(events[3].title.contains("V2") || events[3].title.contains("配置"), "{}", events[3].title);
+        assert!(events[4].title.contains("金额确定") || events[4].title.contains("确定"), "{}", events[4].title);
+        assert!(events[5].title.contains("设备状态"), "{}", events[5].title);
+        assert!(events[6].title.contains("错误"), "{}", events[6].title);
+        assert!(events[7].title.contains("控制板") || events[7].title.contains("固件"), "{}", events[7].title);
+        assert!(events[8].title.contains("刷卡器") || events[8].title.contains("初始化"), "{}", events[8].title);
+        assert!(events[9].title.contains("纸币"), "{}", events[9].title);
     }
 }

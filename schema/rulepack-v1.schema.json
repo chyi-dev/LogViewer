@@ -55,7 +55,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["length_prefix", "mdb_adapter"],
+          "enum": ["length_prefix", "mdb_adapter", "mixed"],
           "default": "length_prefix"
         },
         "tx_header": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 255 } },
@@ -88,6 +88,11 @@
           },
           "checksum": { "type": "string", "enum": ["none", "sum8_tail"] },
           "len": { "type": "integer", "minimum": 1 },
+          "payload_prefix": {
+            "type": "array",
+            "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "description": "Optional payload bytes after the command byte (length_prefix / mixed)."
+          },
           "decode": { "type": "array" },
           "view": {
             "type": "array",

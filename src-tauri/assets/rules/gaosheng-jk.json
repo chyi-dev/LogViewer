@@ -1,0 +1,2248 @@
+{
+  "id": "gaosheng-jk",
+  "name": "高盛 JK 混合串口",
+  "version": "1.0.0",
+  "presentation": "decoded",
+  "ai": {
+    "summary": "解析高盛咖啡机主控 AA55、支付板 V1/V2 AA55 与 MDB-RS232 裸帧。帧头 AA55/A55A 走定长帧（按命令字+整帧长度+载荷前缀匹配）；其余十六进制走 MDB。覆盖 Device/Payment/Coffee-Machine 行。"
+  },
+  "filters": [
+    {
+      "id": "all",
+      "label": "全部"
+    },
+    {
+      "id": "tx",
+      "label": "发送"
+    },
+    {
+      "id": "rx",
+      "label": "接收"
+    }
+  ],
+  "line_rules": [
+    {
+      "id": "device-arrow",
+      "pattern": "^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+Device:\\S+\\s+([><])\\s+([0-9A-Fa-f ]+)$",
+      "dir_group": 2,
+      "dir_map": {
+        ">": "tx",
+        "<": "rx"
+      },
+      "hex_group": 3,
+      "time_group": 1
+    },
+    {
+      "id": "payment-arrow",
+      "pattern": "^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+Payment:\\S+\\s+([><])\\s+([0-9A-Fa-f ]+)$",
+      "dir_group": 2,
+      "dir_map": {
+        ">": "tx",
+        "<": "rx"
+      },
+      "hex_group": 3,
+      "time_group": 1
+    },
+    {
+      "id": "coffee-cn",
+      "pattern": "^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+Coffee-Machine:\\S*?---(发送|接收)：\\s*([0-9A-Fa-f ]+)$",
+      "dir_group": 2,
+      "dir_map": {
+        "发送": "tx",
+        "接收": "rx"
+      },
+      "hex_group": 3,
+      "time_group": 1
+    }
+  ],
+  "frame": {
+    "kind": "mixed",
+    "tx_header": [
+      170,
+      85
+    ],
+    "rx_header": [
+      165,
+      90
+    ],
+    "checksum": "sum8_before_last",
+    "device_bases": [
+      8,
+      16,
+      24,
+      48,
+      64,
+      72,
+      80,
+      88,
+      96,
+      104,
+      112
+    ]
+  },
+  "commands": [
+    {
+      "cmd": 32,
+      "name": "PayStatusTx",
+      "title": "读取支付设备状态",
+      "len": 5,
+      "dir": "tx"
+    },
+    {
+      "cmd": 32,
+      "name": "PayStatusRx",
+      "title": "读取支付设备状态",
+      "len": 8,
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "chg",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "找零器"
+        },
+        {
+          "type": "uint",
+          "id": "bill",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "纸币器"
+        },
+        {
+          "type": "uint",
+          "id": "card",
+          "offset": 2,
+          "width": 1,
+          "endian": "be",
+          "label": "刷卡器"
+        },
+        {
+          "type": "flags",
+          "from": "chg",
+          "bits": [
+            {
+              "bit": 0,
+              "label": "A148 找零器离线",
+              "fault": true,
+              "code": "A148"
+            },
+            {
+              "bit": 1,
+              "label": "A149 找零器缺币",
+              "fault": true,
+              "code": "A149"
+            },
+            {
+              "bit": 2,
+              "label": "A150 找零器少币",
+              "fault": true,
+              "code": "A150"
+            },
+            {
+              "bit": 4,
+              "label": "A151 找零器出币没有回转",
+              "fault": true,
+              "code": "A151"
+            },
+            {
+              "bit": 5,
+              "label": "A152 找零器出币口感应器异常",
+              "fault": true,
+              "code": "A152"
+            }
+          ]
+        },
+        {
+          "type": "flags",
+          "from": "bill",
+          "bits": [
+            {
+              "bit": 0,
+              "label": "A153 纸币器离线",
+              "fault": true,
+              "code": "A153"
+            }
+          ]
+        },
+        {
+          "type": "flags",
+          "from": "card",
+          "bits": [
+            {
+              "bit": 0,
+              "label": "A154 刷卡器离线",
+              "fault": true,
+              "code": "A154"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "cmd": 33,
+      "name": "PayConfigV1",
+      "title": "支付配置(V1)",
+      "len": 8,
+      "dir": "tx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "way",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "支付方式"
+        },
+        {
+          "type": "bits",
+          "from": "way",
+          "start": 0,
+          "width": 8,
+          "id": "pay_type",
+          "label": "方式",
+          "map": {
+            "1": "现金",
+            "2": "刷卡"
+          }
+        },
+        {
+          "type": "uint",
+          "id": "price",
+          "offset": 1,
+          "width": 2,
+          "endian": "be",
+          "label": "金额"
+        }
+      ]
+    },
+    {
+      "cmd": 33,
+      "name": "PayConfigV1Rx",
+      "title": "支付配置(V1)",
+      "len": 6,
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "sta",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "状态"
+        },
+        {
+          "type": "bits",
+          "from": "sta",
+          "start": 0,
+          "width": 8,
+          "id": "ok",
+          "label": "结果",
+          "map": {
+            "0": "成功"
+          }
+        }
+      ]
+    },
+    {
+      "cmd": 33,
+      "name": "PayCreateGeneral",
+      "title": "通用支付创建订单",
+      "len": 10,
+      "dir": "tx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "unit",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "金额单位"
+        },
+        {
+          "type": "uint",
+          "id": "amount",
+          "offset": 1,
+          "width": 2,
+          "endian": "be",
+          "label": "金额"
+        },
+        {
+          "type": "uint",
+          "id": "serial",
+          "offset": 3,
+          "width": 2,
+          "endian": "be",
+          "label": "流水号"
+        }
+      ]
+    },
+    {
+      "cmd": 34,
+      "name": "PayChange",
+      "title": "找零/取消支付",
+      "len": 6,
+      "decode": [
+        {
+          "type": "uint",
+          "id": "count",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "找零枚数"
+        }
+      ]
+    },
+    {
+      "cmd": 34,
+      "name": "PayCancelGeneral",
+      "title": "通用支付取消",
+      "len": 5
+    },
+    {
+      "cmd": 35,
+      "name": "PayReadAmountV1",
+      "title": "读取支付金额(V1)",
+      "len": 5,
+      "dir": "tx"
+    },
+    {
+      "cmd": 35,
+      "name": "PayReadAmountV1Rx",
+      "title": "读取支付金额(V1)",
+      "len": 11,
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "coin",
+          "offset": 0,
+          "width": 2,
+          "endian": "be",
+          "label": "硬币代币"
+        },
+        {
+          "type": "uint",
+          "id": "bill",
+          "offset": 2,
+          "width": 2,
+          "endian": "be",
+          "label": "纸币代币"
+        },
+        {
+          "type": "uint",
+          "id": "card",
+          "offset": 4,
+          "width": 2,
+          "endian": "be",
+          "label": "刷卡代币"
+        }
+      ]
+    },
+    {
+      "cmd": 36,
+      "name": "PayTransaction",
+      "title": "交易结果通知",
+      "len": 6,
+      "decode": [
+        {
+          "type": "uint",
+          "id": "result",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "结果"
+        },
+        {
+          "type": "bits",
+          "from": "result",
+          "start": 0,
+          "width": 8,
+          "id": "tx_result",
+          "label": "交易结果",
+          "map": {
+            "0": "成功",
+            "1": "失败"
+          }
+        }
+      ]
+    },
+    {
+      "cmd": 40,
+      "name": "PayConfigV2",
+      "title": "支付配置(V2)",
+      "len": 14,
+      "decode": [
+        {
+          "type": "uint",
+          "id": "way",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "支付方式"
+        },
+        {
+          "type": "bits",
+          "from": "way",
+          "start": 0,
+          "width": 8,
+          "id": "pay_type",
+          "label": "方式",
+          "map": {
+            "1": "现金",
+            "2": "刷卡"
+          }
+        },
+        {
+          "type": "hex_dump",
+          "id": "product",
+          "label": "商品号"
+        },
+        {
+          "type": "uint",
+          "id": "price",
+          "offset": 5,
+          "width": 4,
+          "endian": "be",
+          "label": "金额"
+        }
+      ]
+    },
+    {
+      "cmd": 41,
+      "name": "PayReadAmountV2Tx",
+      "title": "读取支付金额(V2)",
+      "len": 5,
+      "dir": "tx"
+    },
+    {
+      "cmd": 41,
+      "name": "PayReadAmountV2Rx",
+      "title": "读取支付金额(V2)",
+      "len": 17,
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "coin",
+          "offset": 0,
+          "width": 4,
+          "endian": "be",
+          "label": "硬币代币"
+        },
+        {
+          "type": "uint",
+          "id": "bill",
+          "offset": 4,
+          "width": 4,
+          "endian": "be",
+          "label": "纸币代币"
+        },
+        {
+          "type": "uint",
+          "id": "card",
+          "offset": 8,
+          "width": 4,
+          "endian": "be",
+          "label": "刷卡代币"
+        }
+      ]
+    },
+    {
+      "cmd": 42,
+      "name": "PayConfirm",
+      "title": "金额确定(V2)",
+      "len": 17,
+      "dir": "tx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "coin",
+          "offset": 0,
+          "width": 4,
+          "endian": "be",
+          "label": "硬币代币"
+        },
+        {
+          "type": "uint",
+          "id": "bill",
+          "offset": 4,
+          "width": 4,
+          "endian": "be",
+          "label": "纸币代币"
+        },
+        {
+          "type": "uint",
+          "id": "card",
+          "offset": 8,
+          "width": 4,
+          "endian": "be",
+          "label": "刷卡代币"
+        }
+      ]
+    },
+    {
+      "cmd": 42,
+      "name": "PayConfirmRx",
+      "title": "金额确定(V2)",
+      "len": 6,
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "sta",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "结果"
+        },
+        {
+          "type": "bits",
+          "from": "sta",
+          "start": 0,
+          "width": 8,
+          "id": "match",
+          "label": "金额比对",
+          "map": {
+            "0": "一致",
+            "1": "不一致"
+          }
+        }
+      ]
+    },
+    {
+      "cmd": 43,
+      "name": "PayStopCash",
+      "title": "暂停现金投币(V2)",
+      "len": 6
+    },
+    {
+      "cmd": 8,
+      "name": "PayQueryGeneralTx",
+      "title": "通用支付查询状态",
+      "len": 5,
+      "dir": "tx"
+    },
+    {
+      "cmd": 8,
+      "name": "PayQueryGeneralRx",
+      "title": "通用支付查询状态",
+      "len": 6,
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "sta",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "状态"
+        },
+        {
+          "type": "bits",
+          "from": "sta",
+          "start": 0,
+          "width": 8,
+          "id": "pay_sta",
+          "label": "扣款状态",
+          "map": {
+            "0": "成功",
+            "255": "失败"
+          }
+        }
+      ]
+    },
+    {
+      "cmd": 30,
+      "name": "DeviceStatusTx",
+      "title": "查询设备状态",
+      "len": 5,
+      "dir": "tx"
+    },
+    {
+      "cmd": 30,
+      "name": "DeviceStatusRx",
+      "title": "查询设备状态",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "st_info1",
+          "offset": 0,
+          "width": 4,
+          "endian": "be",
+          "label": "ST_INFO1"
+        },
+        {
+          "type": "bits",
+          "from": "st_info1",
+          "start": 0,
+          "width": 2,
+          "id": "status",
+          "label": "status",
+          "map": {
+            "0": "NORMAL",
+            "1": "BUSY",
+            "2": "ABNORMAL",
+            "3": "ERROR"
+          }
+        },
+        {
+          "type": "flags",
+          "from": "st_info1",
+          "bits": [
+            {
+              "bit": 2,
+              "label": "E14 前门模组离线",
+              "fault": true,
+              "code": "E14"
+            },
+            {
+              "bit": 3,
+              "label": "E15 制冰模组离线",
+              "fault": true,
+              "code": "E15"
+            },
+            {
+              "bit": 4,
+              "label": "E10 研磨模组离线",
+              "fault": true,
+              "code": "E10"
+            },
+            {
+              "bit": 5,
+              "label": "前门故障",
+              "fault": true
+            },
+            {
+              "bit": 6,
+              "label": "E16 制冰故障位",
+              "fault": true,
+              "code": "E16"
+            },
+            {
+              "bit": 7,
+              "label": "E17 研磨故障位",
+              "fault": true,
+              "code": "E17"
+            },
+            {
+              "bit": 8,
+              "label": "E02 落杯器无杯",
+              "fault": true,
+              "code": "E02"
+            },
+            {
+              "bit": 9,
+              "label": "A01 无盖",
+              "fault": true,
+              "code": "A01"
+            },
+            {
+              "bit": 10,
+              "label": "E01 缺水",
+              "fault": true,
+              "code": "E01"
+            },
+            {
+              "bit": 11,
+              "label": "A100",
+              "fault": true,
+              "code": "A100"
+            },
+            {
+              "bit": 12,
+              "label": "E25 通电首次加热",
+              "fault": true,
+              "code": "E25"
+            },
+            {
+              "bit": 13,
+              "label": "A09",
+              "fault": true,
+              "code": "A09"
+            },
+            {
+              "bit": 14,
+              "label": "A166",
+              "fault": true,
+              "code": "A166"
+            },
+            {
+              "bit": 15,
+              "label": "E04 传感器故障",
+              "fault": true,
+              "code": "E04"
+            },
+            {
+              "bit": 16,
+              "label": "A10",
+              "fault": true,
+              "code": "A10"
+            },
+            {
+              "bit": 17,
+              "label": "A11",
+              "fault": true,
+              "code": "A11"
+            },
+            {
+              "bit": 18,
+              "label": "A12",
+              "fault": true,
+              "code": "A12"
+            },
+            {
+              "bit": 19,
+              "label": "A13",
+              "fault": true,
+              "code": "A13"
+            },
+            {
+              "bit": 20,
+              "label": "A14",
+              "fault": true,
+              "code": "A14"
+            },
+            {
+              "bit": 21,
+              "label": "A15",
+              "fault": true,
+              "code": "A15"
+            },
+            {
+              "bit": 22,
+              "label": "A16",
+              "fault": true,
+              "code": "A16"
+            },
+            {
+              "bit": 23,
+              "label": "A17",
+              "fault": true,
+              "code": "A17"
+            },
+            {
+              "bit": 24,
+              "label": "E19",
+              "fault": true,
+              "code": "E19"
+            },
+            {
+              "bit": 25,
+              "label": "A05",
+              "fault": true,
+              "code": "A05"
+            },
+            {
+              "bit": 26,
+              "label": "A06",
+              "fault": true,
+              "code": "A06"
+            },
+            {
+              "bit": 27,
+              "label": "E20",
+              "fault": true,
+              "code": "E20"
+            },
+            {
+              "bit": 30,
+              "label": "E12 轨道故障",
+              "fault": true,
+              "code": "E12"
+            },
+            {
+              "bit": 31,
+              "label": "A116",
+              "fault": true,
+              "code": "A116"
+            }
+          ]
+        },
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 12,
+      "name": "OldErrorCode",
+      "title": "查询错误代码(旧协议)",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "err",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "ErrorCode"
+        },
+        {
+          "type": "flags",
+          "from": "err",
+          "bits": [
+            {
+              "bit": 0,
+              "label": "E01 缺水",
+              "fault": true,
+              "code": "E01"
+            },
+            {
+              "bit": 1,
+              "label": "E02 缺杯",
+              "fault": true,
+              "code": "E02"
+            },
+            {
+              "bit": 2,
+              "label": "E03 缺水且缺杯",
+              "fault": true,
+              "code": "E03"
+            },
+            {
+              "bit": 3,
+              "label": "E04 传感器故障",
+              "fault": true,
+              "code": "E04"
+            },
+            {
+              "bit": 5,
+              "label": "E12 轨道故障",
+              "fault": true,
+              "code": "E12"
+            },
+            {
+              "bit": 6,
+              "label": "A01 无盖",
+              "fault": true,
+              "code": "A01"
+            },
+            {
+              "bit": 7,
+              "label": "E25 通电首次加热",
+              "fault": true,
+              "code": "E25"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "cmd": 31,
+      "name": "MakingStatusTx",
+      "title": "查询制作状态",
+      "len": 5,
+      "dir": "tx"
+    },
+    {
+      "cmd": 31,
+      "name": "MakingStatusRx",
+      "title": "查询制作状态",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "dk",
+          "offset": 0,
+          "width": 4,
+          "endian": "be",
+          "label": "DK_INFO"
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 0,
+          "width": 4,
+          "id": "drink_no",
+          "label": "饮料编号",
+          "map": {
+            "0": "0",
+            "1": "1",
+            "2": "2",
+            "3": "3",
+            "4": "4",
+            "5": "5",
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10",
+            "11": "11",
+            "12": "12",
+            "13": "13",
+            "14": "14",
+            "15": "15"
+          }
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 4,
+          "width": 1,
+          "id": "is_hot",
+          "label": "冷热",
+          "map": {
+            "0": "热",
+            "1": "冷"
+          }
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 5,
+          "width": 1,
+          "id": "is_local",
+          "label": "制饮类型",
+          "map": {
+            "0": "本地",
+            "1": "非本地"
+          }
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 6,
+          "width": 1,
+          "id": "wait_cup",
+          "label": "等待取杯",
+          "map": {
+            "0": "否",
+            "1": "是"
+          }
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 7,
+          "width": 1,
+          "id": "drop_cup",
+          "label": "成功落杯",
+          "map": {
+            "0": "否",
+            "1": "是"
+          }
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 10,
+          "width": 7,
+          "id": "cur_step",
+          "label": "当前步骤",
+          "map": {
+            "0": "0",
+            "1": "1",
+            "2": "2",
+            "3": "3",
+            "4": "4",
+            "5": "5",
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10",
+            "11": "11",
+            "12": "12",
+            "13": "13",
+            "14": "14",
+            "15": "15",
+            "16": "16",
+            "17": "17",
+            "18": "18",
+            "19": "19",
+            "20": "20",
+            "21": "21",
+            "22": "22",
+            "23": "23",
+            "24": "24",
+            "25": "25",
+            "26": "26",
+            "27": "27",
+            "28": "28",
+            "29": "29",
+            "30": "30",
+            "31": "31",
+            "32": "32",
+            "33": "33",
+            "34": "34",
+            "35": "35",
+            "36": "36",
+            "37": "37",
+            "38": "38",
+            "39": "39",
+            "40": "40",
+            "41": "41",
+            "42": "42",
+            "43": "43",
+            "44": "44",
+            "45": "45",
+            "46": "46",
+            "47": "47",
+            "48": "48",
+            "49": "49",
+            "50": "50",
+            "51": "51",
+            "52": "52",
+            "53": "53",
+            "54": "54",
+            "55": "55",
+            "56": "56",
+            "57": "57",
+            "58": "58",
+            "59": "59",
+            "60": "60",
+            "61": "61",
+            "62": "62",
+            "63": "63",
+            "64": "64",
+            "65": "65",
+            "66": "66",
+            "67": "67",
+            "68": "68",
+            "69": "69",
+            "70": "70",
+            "71": "71",
+            "72": "72",
+            "73": "73",
+            "74": "74",
+            "75": "75",
+            "76": "76",
+            "77": "77",
+            "78": "78",
+            "79": "79",
+            "80": "80",
+            "81": "81",
+            "82": "82",
+            "83": "83",
+            "84": "84",
+            "85": "85",
+            "86": "86",
+            "87": "87",
+            "88": "88",
+            "89": "89",
+            "90": "90",
+            "91": "91",
+            "92": "92",
+            "93": "93",
+            "94": "94",
+            "95": "95",
+            "96": "96",
+            "97": "97",
+            "98": "98",
+            "99": "99",
+            "100": "100",
+            "101": "101",
+            "102": "102",
+            "103": "103",
+            "104": "104",
+            "105": "105",
+            "106": "106",
+            "107": "107",
+            "108": "108",
+            "109": "109",
+            "110": "110",
+            "111": "111",
+            "112": "112",
+            "113": "113",
+            "114": "114",
+            "115": "115",
+            "116": "116",
+            "117": "117",
+            "118": "118",
+            "119": "119",
+            "120": "120",
+            "121": "121",
+            "122": "122",
+            "123": "123",
+            "124": "124",
+            "125": "125",
+            "126": "126",
+            "127": "127"
+          }
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 17,
+          "width": 7,
+          "id": "total_step",
+          "label": "总步骤",
+          "map": {
+            "0": "0",
+            "1": "1",
+            "2": "2",
+            "3": "3",
+            "4": "4",
+            "5": "5",
+            "6": "6",
+            "7": "7",
+            "8": "8",
+            "9": "9",
+            "10": "10",
+            "11": "11",
+            "12": "12",
+            "13": "13",
+            "14": "14",
+            "15": "15",
+            "16": "16",
+            "17": "17",
+            "18": "18",
+            "19": "19",
+            "20": "20",
+            "21": "21",
+            "22": "22",
+            "23": "23",
+            "24": "24",
+            "25": "25",
+            "26": "26",
+            "27": "27",
+            "28": "28",
+            "29": "29",
+            "30": "30",
+            "31": "31",
+            "32": "32",
+            "33": "33",
+            "34": "34",
+            "35": "35",
+            "36": "36",
+            "37": "37",
+            "38": "38",
+            "39": "39",
+            "40": "40",
+            "41": "41",
+            "42": "42",
+            "43": "43",
+            "44": "44",
+            "45": "45",
+            "46": "46",
+            "47": "47",
+            "48": "48",
+            "49": "49",
+            "50": "50",
+            "51": "51",
+            "52": "52",
+            "53": "53",
+            "54": "54",
+            "55": "55",
+            "56": "56",
+            "57": "57",
+            "58": "58",
+            "59": "59",
+            "60": "60",
+            "61": "61",
+            "62": "62",
+            "63": "63",
+            "64": "64",
+            "65": "65",
+            "66": "66",
+            "67": "67",
+            "68": "68",
+            "69": "69",
+            "70": "70",
+            "71": "71",
+            "72": "72",
+            "73": "73",
+            "74": "74",
+            "75": "75",
+            "76": "76",
+            "77": "77",
+            "78": "78",
+            "79": "79",
+            "80": "80",
+            "81": "81",
+            "82": "82",
+            "83": "83",
+            "84": "84",
+            "85": "85",
+            "86": "86",
+            "87": "87",
+            "88": "88",
+            "89": "89",
+            "90": "90",
+            "91": "91",
+            "92": "92",
+            "93": "93",
+            "94": "94",
+            "95": "95",
+            "96": "96",
+            "97": "97",
+            "98": "98",
+            "99": "99",
+            "100": "100",
+            "101": "101",
+            "102": "102",
+            "103": "103",
+            "104": "104",
+            "105": "105",
+            "106": "106",
+            "107": "107",
+            "108": "108",
+            "109": "109",
+            "110": "110",
+            "111": "111",
+            "112": "112",
+            "113": "113",
+            "114": "114",
+            "115": "115",
+            "116": "116",
+            "117": "117",
+            "118": "118",
+            "119": "119",
+            "120": "120",
+            "121": "121",
+            "122": "122",
+            "123": "123",
+            "124": "124",
+            "125": "125",
+            "126": "126",
+            "127": "127"
+          }
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 24,
+          "width": 6,
+          "id": "fail",
+          "label": "失败原因",
+          "map": {
+            "0": "NORMAL",
+            "1": "EM01",
+            "2": "EM02",
+            "3": "EM03",
+            "4": "EM04",
+            "5": "EM05",
+            "6": "EM06",
+            "7": "EM07",
+            "8": "EM08",
+            "9": "EM09",
+            "10": "EM10",
+            "11": "EM11",
+            "12": "EM12",
+            "13": "EM13",
+            "14": "EM14",
+            "15": "EM15",
+            "16": "EM16",
+            "17": "EM17",
+            "18": "EM18",
+            "19": "EM19",
+            "20": "EM20",
+            "21": "EM21",
+            "22": "EM22",
+            "23": "EM23",
+            "24": "EM24",
+            "25": "EM25",
+            "26": "EM26"
+          }
+        },
+        {
+          "type": "bits",
+          "from": "dk",
+          "start": 30,
+          "width": 2,
+          "id": "outcome",
+          "label": "执行结果",
+          "map": {
+            "0": "进行中",
+            "1": "成功",
+            "2": "失败",
+            "3": "未知"
+          }
+        }
+      ]
+    },
+    {
+      "cmd": 1,
+      "name": "MakeDrink",
+      "title": "开始制作饮品",
+      "len": 7,
+      "decode": [
+        {
+          "type": "uint",
+          "id": "drink",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "饮料号"
+        },
+        {
+          "type": "uint",
+          "id": "locale",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "本地/非本地"
+        }
+      ]
+    },
+    {
+      "cmd": 29,
+      "name": "SetMakeStep",
+      "title": "设置制作流程",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "drink_type",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "饮品类型"
+        },
+        {
+          "type": "hex_dump",
+          "id": "steps",
+          "label": "步骤"
+        }
+      ]
+    },
+    {
+      "cmd": 44,
+      "name": "FirmwareInfo",
+      "title": "控制板基本信息",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "pcbat",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "PCBAT"
+        },
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 36,
+      "name": "SendCup",
+      "title": "送杯指令",
+      "len": 7,
+      "decode": [
+        {
+          "type": "uint",
+          "id": "mode",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "模式"
+        },
+        {
+          "type": "uint",
+          "id": "wait_s",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "开门等待秒"
+        }
+      ]
+    },
+    {
+      "cmd": 32,
+      "name": "MainVersion",
+      "title": "旧-控制板基本信息",
+      "len": 11,
+      "payload_prefix": [
+        1,
+        3,
+        2,
+        35,
+        0,
+        6
+      ],
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 32,
+      "name": "MainModule01",
+      "title": "查询主控模组状态",
+      "len": 11,
+      "payload_prefix": [
+        1,
+        3
+      ],
+      "decode": [
+        {
+          "type": "uint",
+          "id": "addr",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "模组地址"
+        },
+        {
+          "type": "uint",
+          "id": "fc",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "功能码"
+        },
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 32,
+      "name": "DoorModule",
+      "title": "查询前门模组状态",
+      "len": 11,
+      "payload_prefix": [
+        2
+      ],
+      "decode": [
+        {
+          "type": "uint",
+          "id": "addr",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "模组地址"
+        },
+        {
+          "type": "uint",
+          "id": "fc",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "功能码"
+        },
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 32,
+      "name": "IceModule",
+      "title": "查询制冰模组状态",
+      "len": 11,
+      "payload_prefix": [
+        3
+      ],
+      "decode": [
+        {
+          "type": "uint",
+          "id": "addr",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "模组地址"
+        },
+        {
+          "type": "uint",
+          "id": "fc",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "功能码"
+        },
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 32,
+      "name": "ModuleQuery",
+      "title": "模组查询",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "addr",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "模组地址"
+        },
+        {
+          "type": "uint",
+          "id": "fc",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "功能码"
+        },
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 4,
+      "name": "HotTemp",
+      "title": "热水温度",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 5,
+      "name": "ColdTemp",
+      "title": "冷水温度",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 7,
+      "name": "SetCupMethod",
+      "title": "设置落杯方式",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 11,
+      "name": "OldDeviceStatus",
+      "title": "旧协议设备状态",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 21,
+      "name": "SetOldRecipe",
+      "title": "设置旧配方",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 23,
+      "name": "GroundComplete",
+      "title": "研磨完成通知",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 26,
+      "name": "TestCommand",
+      "title": "测试指令",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 27,
+      "name": "LockCommand",
+      "title": "门锁",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 28,
+      "name": "ReplenishWater",
+      "title": "补水",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 38,
+      "name": "Reboot",
+      "title": "重启",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 39,
+      "name": "CleanDevice",
+      "title": "清洗设备",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 41,
+      "name": "DrainWater",
+      "title": "排水",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 42,
+      "name": "DropCupModuleStatus",
+      "title": "落杯模组状态",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 18,
+      "name": "CleanPipe",
+      "title": "清洗管路",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 10,
+      "name": "CleanAllPipe",
+      "title": "清洗全部管路",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 33,
+      "name": "GroundOrLight",
+      "title": "研磨动作/灯光",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ]
+    },
+    {
+      "cmd": 0,
+      "name": "Ack",
+      "title": "ACK",
+      "len": 1,
+      "dir": "rx",
+      "role": "control",
+      "checksum": "none"
+    },
+    {
+      "cmd": 255,
+      "name": "Nak",
+      "title": "NAK",
+      "len": 1,
+      "dir": "rx",
+      "role": "control",
+      "checksum": "none"
+    },
+    {
+      "cmd": 170,
+      "name": "Ret",
+      "title": "RET",
+      "len": 1,
+      "dir": "rx",
+      "role": "control",
+      "checksum": "none"
+    },
+    {
+      "cmd": 16,
+      "name": "ClReset",
+      "title": "刷卡器重置",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 17,
+      "name": "ClSetup",
+      "title": "刷卡器初始化",
+      "dir": "tx",
+      "role": "command",
+      "sub": 0,
+      "checksum": "none"
+    },
+    {
+      "cmd": 17,
+      "name": "ClSetupReply",
+      "title": "刷卡器初始化应答",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "level",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "功能等级"
+        },
+        {
+          "type": "uint",
+          "id": "country",
+          "offset": 2,
+          "width": 2,
+          "endian": "be",
+          "label": "国家货币码"
+        },
+        {
+          "type": "uint",
+          "id": "scale",
+          "offset": 4,
+          "width": 1,
+          "endian": "be",
+          "label": "缩放系数"
+        },
+        {
+          "type": "uint",
+          "id": "decimals",
+          "offset": 5,
+          "width": 1,
+          "endian": "be",
+          "label": "小数位"
+        }
+      ],
+      "role": "reply",
+      "sub": 0,
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 17,
+      "name": "ClMaxMin",
+      "title": "刷卡器设置最大最小价格",
+      "dir": "tx",
+      "role": "command",
+      "sub": 1,
+      "checksum": "none"
+    },
+    {
+      "cmd": 23,
+      "name": "ClReadId",
+      "title": "刷卡器读取设备ID",
+      "dir": "tx",
+      "role": "command",
+      "sub": 0,
+      "checksum": "none"
+    },
+    {
+      "cmd": 23,
+      "name": "ClReadIdReply",
+      "title": "刷卡器设备ID应答",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "reply",
+      "sub": 0,
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 20,
+      "name": "ClEnable",
+      "title": "刷卡器开启会话",
+      "dir": "tx",
+      "role": "command",
+      "sub": 1,
+      "checksum": "none"
+    },
+    {
+      "cmd": 20,
+      "name": "ClDisable",
+      "title": "刷卡器结束会话/禁用",
+      "dir": "tx",
+      "role": "command",
+      "sub": 0,
+      "checksum": "none"
+    },
+    {
+      "cmd": 19,
+      "name": "ClVendCancel",
+      "title": "刷卡器取消出货",
+      "dir": "tx",
+      "role": "command",
+      "sub": 1,
+      "checksum": "none"
+    },
+    {
+      "cmd": 19,
+      "name": "ClVendReq",
+      "title": "刷卡器请求出货",
+      "dir": "tx",
+      "decode": [
+        {
+          "type": "uint",
+          "id": "price",
+          "offset": 0,
+          "width": 2,
+          "endian": "be",
+          "label": "价格"
+        },
+        {
+          "type": "uint",
+          "id": "item",
+          "offset": 2,
+          "width": 2,
+          "endian": "be",
+          "label": "货道"
+        }
+      ],
+      "role": "command",
+      "sub": 0,
+      "checksum": "none"
+    },
+    {
+      "cmd": 19,
+      "name": "ClVendOk",
+      "title": "刷卡器出货成功",
+      "dir": "tx",
+      "role": "command",
+      "sub": 2,
+      "checksum": "none"
+    },
+    {
+      "cmd": 19,
+      "name": "ClVendFail",
+      "title": "刷卡器出货失败",
+      "dir": "tx",
+      "role": "command",
+      "sub": 3,
+      "checksum": "none"
+    },
+    {
+      "cmd": 19,
+      "name": "ClSessionComplete",
+      "title": "刷卡器结束会话",
+      "dir": "tx",
+      "role": "command",
+      "sub": 4,
+      "checksum": "none"
+    },
+    {
+      "cmd": 18,
+      "name": "ClPoll",
+      "title": "刷卡器轮询",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 8,
+      "name": "CoinReset",
+      "title": "硬币器重置",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 9,
+      "name": "CoinSetup",
+      "title": "硬币器初始化",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 9,
+      "name": "CoinSetupReply",
+      "title": "硬币器初始化应答",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "reply",
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 10,
+      "name": "CoinTube",
+      "title": "硬币器查询钱箱状态",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 10,
+      "name": "CoinTubeReply",
+      "title": "硬币器钱箱状态应答",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "reply",
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 11,
+      "name": "CoinPoll",
+      "title": "硬币器轮询",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 12,
+      "name": "CoinEnable",
+      "title": "硬币器开始收钱",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 12,
+      "name": "CoinDisable",
+      "title": "硬币器停止收钱",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 15,
+      "name": "CoinFeatureEnable",
+      "title": "硬币器功能使能",
+      "dir": "tx",
+      "role": "command",
+      "sub": 1,
+      "checksum": "none"
+    },
+    {
+      "cmd": 15,
+      "name": "CoinPayoutStatus",
+      "title": "硬币器找零状态",
+      "dir": "tx",
+      "role": "command",
+      "sub": 3,
+      "checksum": "none"
+    },
+    {
+      "cmd": 15,
+      "name": "CoinPayoutValue",
+      "title": "硬币器找零金额轮询",
+      "dir": "tx",
+      "role": "command",
+      "sub": 4,
+      "checksum": "none"
+    },
+    {
+      "cmd": 15,
+      "name": "CoinAltPayout",
+      "title": "硬币器找零",
+      "dir": "tx",
+      "role": "command",
+      "sub": 2,
+      "checksum": "none"
+    },
+    {
+      "cmd": 48,
+      "name": "BillReset",
+      "title": "纸币器重置",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 49,
+      "name": "BillSetup",
+      "title": "纸币器初始化",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 49,
+      "name": "BillSetupReply",
+      "title": "纸币器初始化应答",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "reply",
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 51,
+      "name": "BillPoll",
+      "title": "纸币器轮询",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 52,
+      "name": "BillEnable",
+      "title": "纸币器开始收钱",
+      "dir": "tx",
+      "role": "command",
+      "checksum": "none"
+    },
+    {
+      "cmd": 55,
+      "name": "BillFeature",
+      "title": "纸币器扩展功能",
+      "dir": "tx",
+      "role": "command",
+      "sub": 1,
+      "checksum": "none"
+    },
+    {
+      "cmd": 55,
+      "name": "BillRecyclerSetup",
+      "title": "纸币器回收单元",
+      "dir": "tx",
+      "role": "command",
+      "sub": 3,
+      "checksum": "none"
+    },
+    {
+      "cmd": 55,
+      "name": "BillDispenseStatus",
+      "title": "纸币器找零状态",
+      "dir": "tx",
+      "role": "command",
+      "sub": 5,
+      "checksum": "none"
+    },
+    {
+      "cmd": 16,
+      "name": "ClReport",
+      "title": "刷卡器主动上报",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "report",
+      "checksum": "none"
+    },
+    {
+      "cmd": 8,
+      "name": "CoinReport",
+      "title": "硬币器主动上报",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "report",
+      "checksum": "none"
+    },
+    {
+      "cmd": 48,
+      "name": "BillReport",
+      "title": "纸币器主动上报",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "report",
+      "checksum": "none"
+    },
+    {
+      "cmd": 0,
+      "name": "ClJustReset",
+      "title": "刷卡器复位事件",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "event",
+      "checksum": "none"
+    },
+    {
+      "cmd": 1,
+      "name": "ClBeginSession",
+      "title": "刷卡器开始会话事件",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "event",
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 3,
+      "name": "ClVendApproved",
+      "title": "刷卡器出货批准",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "event",
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 4,
+      "name": "ClVendDenied",
+      "title": "刷卡器出货拒绝",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "event",
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 5,
+      "name": "ClEndSession",
+      "title": "刷卡器会话结束事件",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "event",
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 6,
+      "name": "ClCancelled",
+      "title": "刷卡器取消事件",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "event",
+      "checksum": "sum8_tail"
+    },
+    {
+      "cmd": 7,
+      "name": "ClMalfunction",
+      "title": "刷卡器故障事件",
+      "dir": "rx",
+      "decode": [
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "label": "载荷"
+        }
+      ],
+      "role": "event",
+      "checksum": "sum8_tail"
+    }
+  ],
+  "examples": [
+    {
+      "input": "2026-08-14 15:34:58.529 Payment:/dev/ttyS9 > AA 55 02 20 21",
+      "note": "支付读状态"
+    },
+    {
+      "input": "2026-08-14 15:35:00.000 Device:/dev/ttyS7 > AA 55 08 20 01 03 02 23 00 06 56",
+      "note": "主控旧固件"
+    },
+    {
+      "input": "2026-08-17 10:41:36.684 Payment:/dev/ttyS9 > 11 00 03 00 00 00",
+      "note": "MDB 刷卡器 Setup"
+    }
+  ]
+}
