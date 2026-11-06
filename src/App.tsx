@@ -93,6 +93,28 @@ function ParseBlockView({ block }: { block: DisplayBlock }) {
   }
 }
 
+function parseStatusLabel(e: ParseEvent): string {
+  const blocks = e.blocks ?? [];
+  for (const b of blocks) {
+    if (b.type === "status" && b.value) return b.value;
+  }
+  return "";
+}
+
+function parseFaultSummary(e: ParseEvent): string {
+  const blocks = e.blocks ?? [];
+  for (const b of blocks) {
+    if (b.type === "flags" && b.items.length > 0) {
+      return b.items.join(" · ");
+    }
+  }
+  const clauses = e.clauses ?? [];
+  const faultTexts = clauses
+    .filter((c) => c.fault && c.text.trim())
+    .map((c) => c.text.trim());
+  return faultTexts.join(" · ");
+}
+
 const FONT_SIZE_KEY = "logviewer.editorFontSize";
 const FONT_SIZE_DEFAULT = 12.5;
 const FONT_SIZE_MIN = 10;
@@ -176,6 +198,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [caret, setCaret] = useState({ line: 1, col: 1 });
   const [selectedParseLine, setSelectedParseLine] = useState<number | null>(null);
+  const [openParseId, setOpenParseId] = useState<string | null>(null);
   const [selRange, setSelRange] = useState({ start: 0, end: 0 });
   const [docVersion, setDocVersion] = useState(0);
 
@@ -461,6 +484,7 @@ export default function App() {
     setCacheRange(null);
     cacheRangeRef.current = null;
     setSelectedParseLine(null);
+    setOpenParseId(null);
   };
 
   const closeTab = (id: string) => {
@@ -1172,50 +1196,61 @@ export default function App() {
                 const blocks = e.blocks ?? [];
                 const clauses = e.clauses ?? [];
                 const bytes = e.bytes ?? [];
+                const status = parseStatusLabel(e);
+                const faultSummary = e.fault ? parseFaultSummary(e) : "";
+                const isOpen = openParseId === e.id;
+                const expandBlocks = blocks.filter((b) => b.type !== "heading");
                 return (
                   <div
                     key={e.id}
                     data-parse-line={e.line}
-                    className={`parse-card${e.line === selectedParseLine ? " active" : ""}${e.fault ? " fault" : ""}`}
+                    className={`parse-row${e.line === selectedParseLine ? " active" : ""}${e.fault ? " fault" : ""}${isOpen ? " open" : ""}`}
                     onClick={() => {
                       setSelectedParseLine(e.line);
                       jumpToLine(e.line);
+                      setOpenParseId((cur) => (cur === e.id ? null : e.id));
                     }}
                   >
-                    <div className="parse-meta">
-                      L{e.line} · {e.dir === "tx" ? "发送" : "接收"}
+                    <div className="parse-summary">
+                      <span className="parse-no">L{e.line}</span>
+                      <span className="parse-dir">{e.dir === "tx" ? "发送" : "接收"}</span>
+                      <span className="parse-row-title">{e.title}</span>
+                      {status ? <span className="parse-status">{status}</span> : <span className="parse-status" />}
+                      {faultSummary ? (
+                        <div className="parse-fault-line">{faultSummary}</div>
+                      ) : null}
                     </div>
-                    <div className="parse-title-row">
-                      <i className={`parse-lamp${e.fault ? " bad" : " ok"}`} />
-                      <h2 className="parse-title">{e.title}</h2>
-                    </div>
-                    {blocks.length > 0 ? (
-                      <div className="parse-blocks">
-                        {blocks.map((b, i) => (
-                          <ParseBlockView key={i} block={b} />
-                        ))}
+                    {isOpen ? (
+                      <div className="parse-expand">
+                        {expandBlocks.length > 0 ? (
+                          <div className="parse-blocks">
+                            {expandBlocks.map((b, i) => (
+                              <ParseBlockView key={i} block={b} />
+                            ))}
+                          </div>
+                        ) : clauses.length > 0 ? (
+                          <p className="parse-clauses">
+                            {clauses.map((c, i) => (
+                              <span key={i}>
+                                <span className="parse-hx">{c.hex}</span>
+                                ：
+                                <span className={c.fault ? "parse-mean fault" : "parse-mean"}>
+                                  {c.text}
+                                </span>
+                                ；
+                              </span>
+                            ))}
+                          </p>
+                        ) : (
+                          bytes.map((b, i) => (
+                            <div key={i} className={`byte-row${b.fault ? " fault" : ""}`}>
+                              <span className="byte-hex">{b.hex}</span>
+                              <span className="byte-text">{b.text}</span>
+                            </div>
+                          ))
+                        )}
                       </div>
-                    ) : clauses.length > 0 ? (
-                      <p className="parse-clauses">
-                        {clauses.map((c, i) => (
-                          <span key={i}>
-                            <span className="parse-hx">{c.hex}</span>
-                            ：
-                            <span className={c.fault ? "parse-mean fault" : "parse-mean"}>
-                              {c.text}
-                            </span>
-                            ；
-                          </span>
-                        ))}
-                      </p>
-                    ) : (
-                      bytes.map((b, i) => (
-                        <div key={i} className={`byte-row${b.fault ? " fault" : ""}`}>
-                          <span className="byte-hex">{b.hex}</span>
-                          <span className="byte-text">{b.text}</span>
-                        </div>
-                      ))
-                    )}
+                    ) : null}
                   </div>
                 );
               })

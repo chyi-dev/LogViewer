@@ -608,7 +608,7 @@ fn finish_mdb_event(
             (Vec::new(), notes, Vec::new())
         }
     } else {
-        (notes, Vec::new(), Vec::new())
+        (Vec::new(), notes, Vec::new())
     };
 
     ParseEvent {
@@ -893,7 +893,7 @@ fn decode_frame(pack: &CompiledPack, line_no: usize, dir: &str, bytes: &[u8]) ->
             (Vec::new(), notes, Vec::new())
         }
     } else {
-        (notes, Vec::new(), Vec::new())
+        (Vec::new(), notes, Vec::new())
     };
 
     ParseEvent {
@@ -1728,15 +1728,19 @@ mod tests {
     }
 
     #[test]
-    fn unknown_command_keeps_bytes() {
+    fn unknown_command_uses_clauses() {
         let pack = length_prefix_pack();
         let text = "2026-11-02 00:00:01.283 Device:/dev/ttyS7 < A5 5A 03 FE 00 00\n";
         let events = parse_document(&pack, text);
         assert_eq!(events.len(), 1);
-        assert!(events[0].clauses.is_empty());
+        assert!(events[0].bytes.is_empty());
         assert!(events[0].blocks.is_empty());
-        assert!(!events[0].bytes.is_empty());
+        assert!(!events[0].clauses.is_empty());
         assert!(events[0].title.contains("未知命令"));
+        assert!(events[0]
+            .clauses
+            .iter()
+            .any(|c| c.text.contains("载荷") || c.text.contains("未知命令")));
     }
 
     #[test]
