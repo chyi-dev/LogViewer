@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-08T08:04:54.058Z",
+        "reason": "Unused Vite scaffold in App.css; the product UI sets its own faces in tokens.css and does not import this file."
+      }
+    ]
+  }
+}

@@ -16,6 +16,7 @@ import {
   drawSelection,
   highlightActiveLine,
   highlightActiveLineGutter,
+  highlightWhitespace,
 } from "@codemirror/view";
 import {
   defaultKeymap,
@@ -60,6 +61,8 @@ export interface CodeEditorHandle {
 export interface CodeEditorProps {
   activeId: string;
   wrap: boolean;
+  showLineNumbers: boolean;
+  showWhitespace: boolean;
   onCaretChange: (
     caret: { line: number; col: number },
     sel: { start: number; end: number },
@@ -129,6 +132,8 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     {
       activeId,
       wrap,
+      showLineNumbers,
+      showWhitespace,
       onCaretChange,
       onDirty,
       onDocVersion,
@@ -143,7 +148,11 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const scrollsRef = useRef(new Map<string, ScrollSnap>());
     const activeIdRef = useRef(activeId);
     const wrapRef = useRef(wrap);
+    const lineRef = useRef(showLineNumbers);
+    const spaceRef = useRef(showWhitespace);
     const wrapCompartment = useRef(new Compartment());
+    const gutterCompartment = useRef(new Compartment());
+    const spaceCompartment = useRef(new Compartment());
     const docVersionRef = useRef(0);
     const lastCaretRef = useRef({ line: 1, col: 1, start: 0, end: 0 });
     const lastViewportRef = useRef<ViewportRange>({ fromLine: 1, toLine: 1 });
@@ -207,19 +216,30 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       callbacksRef.current.onCaretChange(caret, range);
     };
 
+    const applyViewOptions = (view: EditorView) => {
+      view.dispatch({
+        effects: [
+          wrapCompartment.current.reconfigure(wrapRef.current ? EditorView.lineWrapping : []),
+          gutterCompartment.current.reconfigure(
+            lineRef.current ? [lineNumbers(), highlightActiveLineGutter()] : [],
+          ),
+          spaceCompartment.current.reconfigure(spaceRef.current ? highlightWhitespace() : []),
+        ],
+      });
+    };
+
     const makeState = (doc: string): EditorState => {
-      const wrapExt = wrapRef.current ? EditorView.lineWrapping : [];
       return EditorState.create({
         doc,
         extensions: [
-          lineNumbers(),
-          highlightActiveLineGutter(),
           highlightActiveLine(),
           history(),
           drawSelection(),
           EditorState.allowMultipleSelections.of(true),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          wrapCompartment.current.of(wrapExt),
+          gutterCompartment.current.of(lineRef.current ? [lineNumbers(), highlightActiveLineGutter()] : []),
+          spaceCompartment.current.of(spaceRef.current ? highlightWhitespace() : []),
+          wrapCompartment.current.of(wrapRef.current ? EditorView.lineWrapping : []),
           buildTheme(),
           EditorView.domEventHandlers({
             contextmenu: (ev, view) => {
@@ -307,15 +327,13 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
 
     useEffect(() => {
       wrapRef.current = wrap;
+      lineRef.current = showLineNumbers;
+      spaceRef.current = showWhitespace;
       const view = viewRef.current;
       if (!view) return;
-      view.dispatch({
-        effects: wrapCompartment.current.reconfigure(
-          wrap ? EditorView.lineWrapping : [],
-        ),
-      });
+      applyViewOptions(view);
       statesRef.current.set(activeIdRef.current, view.state);
-    }, [wrap]);
+    }, [wrap, showLineNumbers, showWhitespace]);
 
     useEffect(() => {
       const view = viewRef.current;
@@ -333,11 +351,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       }
       activeIdRef.current = activeId;
       view.setState(next);
-      view.dispatch({
-        effects: wrapCompartment.current.reconfigure(
-          wrapRef.current ? EditorView.lineWrapping : [],
-        ),
-      });
+      applyViewOptions(view);
       statesRef.current.set(activeId, view.state);
       requestAnimationFrame(() => restoreScroll(activeId));
       emitCaret(view.state);

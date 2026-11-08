@@ -66,6 +66,17 @@ export function IconSearch(props: IconProps) {
   );
 }
 
+export function IconReplace(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h13" />
+      <path d="m14 4 3 3-3 3" />
+      <path d="M20 17H7" />
+      <path d="m10 14-3 3 3 3" />
+    </Icon>
+  );
+}
+
 export function IconSun(props: IconProps) {
   return (
     <Icon {...props}>
@@ -105,9 +116,113 @@ export function IconSettings(props: IconProps) {
 export function IconMore(props: IconProps) {
   return (
     <Icon {...props}>
-      <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h10" />
+    </Icon>
+  );
+}
+
+export function IconGoto(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 19V5" />
+      <path d="M9 12h10" />
+      <path d="m15 8 4 4-4 4" />
+    </Icon>
+  );
+}
+
+export function IconUndo(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h9a7 7 0 1 1 0 14H11" />
+    </Icon>
+  );
+}
+
+export function IconRedo(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="m15 14 5-5-5-5" />
+      <path d="M20 9h-9a7 7 0 1 0 0 14h2" />
+    </Icon>
+  );
+}
+
+export function IconSelectAll(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path d="m8 12 2.5 2.5L16 9" />
+    </Icon>
+  );
+}
+
+export function IconClock(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v5l3 2" />
+    </Icon>
+  );
+}
+
+export function IconSaveAs(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7" />
+      <path d="M14 3v5h5l-5-5" />
+      <path d="M16 21v-6M13 18h6" />
+    </Icon>
+  );
+}
+
+export function IconCloseTab(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 8h16" />
+      <rect x="4" y="5" width="16" height="14" rx="2" />
+      <path d="m10 12 4 4M14 12l-4 4" />
+    </Icon>
+  );
+}
+
+export function IconExport(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 16V4" />
+      <path d="m7 8 5-5 5 5" />
+      <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+    </Icon>
+  );
+}
+
+export function IconImport(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4v12" />
+      <path d="m7 12 5 5 5-5" />
+      <path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5" />
+    </Icon>
+  );
+}
+
+export function IconLock(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </Icon>
+  );
+}
+
+export function IconUnlock(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <rect x="5" y="11" width="14" height="9" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 7.4-2" />
     </Icon>
   );
 }

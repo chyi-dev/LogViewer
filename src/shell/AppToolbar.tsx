@@ -1,19 +1,32 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { RuleSummary } from "../types";
 import { nextThemeMode, themeModeLabel, type AppThemeMode } from "../theme/appTheme";
 import {
+  IconClock,
+  IconCloseTab,
+  IconExport,
   IconFilePlus,
   IconFolderOpen,
+  IconGoto,
+  IconImport,
+  IconLock,
   IconMoon,
   IconMore,
   IconPanel,
+  IconRedo,
+  IconReplace,
   IconSave,
+  IconSaveAs,
   IconSearch,
+  IconSelectAll,
   IconSettings,
   IconSun,
   IconSunMoon,
+  IconUndo,
+  IconUnlock,
 } from "./icons";
 import { isMac, isTauri, modLabel } from "./platform";
+import type { ShortcutId, ToolbarVisibility } from "./prefs";
 import { toggleWindowMaximize, WindowControls } from "./WindowControls";
 
 export interface ToolbarActions {
@@ -26,36 +39,32 @@ export interface ToolbarActions {
   onReplace: () => void;
   onGoto: () => void;
   onToggleParse: () => void;
-  onToggleWrap: () => void;
-  onBumpFont: (delta: number) => void;
-  onResetFont: () => void;
-  onManageRules: () => void;
   onExportRules: () => void;
   onImportRules: () => void;
   onEncryptRules: () => void;
   onDecryptRules: () => void;
-  onAppreciate: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onSelectAll: () => void;
   onInsertDateTime: () => void;
   onSwitchRule: (id: string) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (section?: "rules") => void;
   onCycleTheme: (mode: AppThemeMode) => void;
 }
 
 interface AppToolbarProps extends ToolbarActions {
   parseOpen: boolean;
-  wrap: boolean;
   themeMode: AppThemeMode;
   ruleName: string;
   rules: RuleSummary[];
+  toolbar: ToolbarVisibility;
+  shortcutLabel: (id: ShortcutId) => string;
   onToast: (message: string) => void;
 }
 
 type MenuEntry =
   | { sep: true }
-  | { label: string; accel?: string; act: () => void };
+  | { label: string; accel?: string; icon: ReactNode; act: () => void };
 
 export default function AppToolbar(props: AppToolbarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -66,9 +75,9 @@ export default function AppToolbar(props: AppToolbarProps) {
   useEffect(() => {
     const el = barRef.current;
     if (!el) return;
-    const observer = new ResizeObserver(() => setNarrow(el.clientWidth < 760));
+    const observer = new ResizeObserver(() => setNarrow(el.clientWidth < 840));
     observer.observe(el);
-    setNarrow(el.clientWidth < 760);
+    setNarrow(el.clientWidth < 840);
     return () => observer.disconnect();
   }, []);
 
@@ -97,34 +106,37 @@ export default function AppToolbar(props: AppToolbarProps) {
     props.onToast(`主题：${themeModeLabel(next)}`);
   };
 
-  const moreItems: MenuEntry[] = [
-    ...(narrow ? [{ label: "查找…", accel: `${modLabel}+F`, act: props.onFind } satisfies MenuEntry] : []),
-    { label: "替换…", accel: `${modLabel}+H`, act: props.onReplace },
-    { label: "转到…", accel: `${modLabel}+G`, act: props.onGoto },
-    { sep: true },
-    { label: "撤销", accel: `${modLabel}+Z`, act: props.onUndo },
-    { label: "重做", accel: `${modLabel}+Y`, act: props.onRedo },
-    { label: "全选", accel: `${modLabel}+A`, act: props.onSelectAll },
-    { label: "时间/日期", accel: "F5", act: props.onInsertDateTime },
-    { sep: true },
-    { label: "另存为…", accel: `${modLabel}+Shift+S`, act: props.onSaveAs },
-    { label: "关闭当前标签", accel: `${modLabel}+W`, act: props.onCloseTab },
-    { sep: true },
-    { label: props.wrap ? "关闭自动换行" : "自动换行", act: props.onToggleWrap },
-    { label: "增大字体", accel: `${modLabel}+=`, act: () => props.onBumpFont(1) },
-    { label: "减小字体", accel: `${modLabel}+-`, act: () => props.onBumpFont(-1) },
-    { label: "默认字号", accel: `${modLabel}+0`, act: props.onResetFont },
-    { sep: true },
-    { label: "管理规则…", act: props.onManageRules },
-    { label: "导出规则…", act: props.onExportRules },
-    { label: "导入规则…", act: props.onImportRules },
-    { label: "加密规则…", act: props.onEncryptRules },
-    { label: "解密规则…", act: props.onDecryptRules },
-    { sep: true },
-    { label: "赞赏作者…", act: props.onAppreciate },
+  const accel = props.shortcutLabel;
+  const ThemeIcon = props.themeMode === "system" ? IconSunMoon : props.themeMode === "dark" ? IconMoon : IconSun;
+  const hidden: MenuEntry[] = [
+    ...(!props.toolbar.newFile ? [{ label: "新建", icon: <IconFilePlus />, accel: accel("new"), act: props.onNew } satisfies MenuEntry] : []),
+    ...(!props.toolbar.open ? [{ label: "打开…", icon: <IconFolderOpen />, accel: accel("open"), act: props.onOpen } satisfies MenuEntry] : []),
+    ...(!props.toolbar.save ? [{ label: "保存", icon: <IconSave />, accel: accel("save"), act: props.onSave } satisfies MenuEntry] : []),
+    ...(!props.toolbar.parse ? [{ label: "解析分栏", icon: <IconPanel />, accel: accel("parse"), act: props.onToggleParse } satisfies MenuEntry] : []),
+    ...(!props.toolbar.find || narrow ? [{ label: "查找…", icon: <IconSearch />, accel: accel("find"), act: props.onFind } satisfies MenuEntry] : []),
+    ...(!props.toolbar.theme ? [{ label: "切换主题", icon: <ThemeIcon />, act: cycleTheme } satisfies MenuEntry] : []),
   ];
 
-  const ThemeIcon = props.themeMode === "system" ? IconSunMoon : props.themeMode === "dark" ? IconMoon : IconSun;
+  const moreItems: MenuEntry[] = [
+    ...hidden,
+    ...(hidden.length ? [{ sep: true } satisfies MenuEntry] : []),
+    { label: "替换…", icon: <IconReplace />, accel: accel("replace"), act: props.onReplace },
+    { label: "转到…", icon: <IconGoto />, accel: accel("goto"), act: props.onGoto },
+    { sep: true },
+    { label: "撤销", icon: <IconUndo />, accel: `${modLabel}+Z`, act: props.onUndo },
+    { label: "重做", icon: <IconRedo />, accel: `${modLabel}+Y`, act: props.onRedo },
+    { label: "全选", icon: <IconSelectAll />, accel: `${modLabel}+A`, act: props.onSelectAll },
+    { label: "时间/日期", icon: <IconClock />, accel: accel("insertDate"), act: props.onInsertDateTime },
+    { sep: true },
+    { label: "另存为…", icon: <IconSaveAs />, accel: accel("saveAs"), act: props.onSaveAs },
+    { label: "关闭当前标签", icon: <IconCloseTab />, accel: accel("closeTab"), act: props.onCloseTab },
+    { sep: true },
+    { label: "导出规则…", icon: <IconExport />, act: props.onExportRules },
+    { label: "导入规则…", icon: <IconImport />, act: props.onImportRules },
+    { label: "加密规则…", icon: <IconLock />, act: props.onEncryptRules },
+    { label: "解密规则…", icon: <IconUnlock />, act: props.onDecryptRules },
+  ];
+
   const reserveInset = isMac && isTauri();
 
   const onDragDoubleClick = (event: React.MouseEvent) => {
@@ -143,36 +155,90 @@ export default function AppToolbar(props: AppToolbarProps) {
       <div className="toolbar-drag" data-tauri-drag-region />
       <div className="toolbar-side toolbar-left">
         <span className="brand">LogViewer</span>
-        <button type="button" className="toolbtn" onClick={props.onNew} title={`新建 (${modLabel}+N)`}>
-          <IconFilePlus />
-          <span>新建</span>
-        </button>
-        <button type="button" className="toolbtn" onClick={props.onOpen} title={`打开 (${modLabel}+O)`}>
-          <IconFolderOpen />
-          <span>打开</span>
-        </button>
-        <button type="button" className="toolbtn" onClick={props.onSave} title={`保存 (${modLabel}+S)`}>
-          <IconSave />
-          <span>保存</span>
-        </button>
-        <button
-          type="button"
-          className={`toolbtn${props.parseOpen ? " on" : ""}`}
-          onClick={props.onToggleParse}
-          title={`解析分栏 (${modLabel}+Shift+P)`}
-          aria-pressed={props.parseOpen}
-        >
-          <IconPanel />
-          <span>解析</span>
-        </button>
+        {props.toolbar.newFile ? (
+          <button type="button" className="toolbtn" onClick={props.onNew} title={`新建 (${accel("new")})`}>
+            <IconFilePlus />
+            <span>新建</span>
+          </button>
+        ) : null}
+        {props.toolbar.open ? (
+          <button type="button" className="toolbtn" onClick={props.onOpen} title={`打开 (${accel("open")})`}>
+            <IconFolderOpen />
+            <span>打开</span>
+          </button>
+        ) : null}
+        {props.toolbar.save ? (
+          <button type="button" className="toolbtn" onClick={props.onSave} title={`保存 (${accel("save")})`}>
+            <IconSave />
+            <span>保存</span>
+          </button>
+        ) : null}
+        {props.toolbar.parse ? (
+          <button
+            type="button"
+            className={`toolbtn${props.parseOpen ? " on" : ""}`}
+            onClick={props.onToggleParse}
+            title={`解析分栏 (${accel("parse")})`}
+            aria-pressed={props.parseOpen}
+          >
+            <IconPanel />
+            <span>解析</span>
+          </button>
+        ) : null}
+        <div className={`menu${moreOpen ? " open" : ""}`}>
+          <button
+            type="button"
+            className="toolbtn"
+            title="更多"
+            aria-label="更多"
+            aria-expanded={moreOpen}
+            onClick={(event) => {
+              event.stopPropagation();
+              setRuleOpen(false);
+              setMoreOpen((open) => !open);
+            }}
+          >
+            <IconMore />
+            <span>更多</span>
+          </button>
+          {moreOpen ? (
+            <div className="dropdown more-dropdown" role="menu">
+              {moreItems.map((item, index) =>
+                "sep" in item ? (
+                  <div className="sep" key={`sep-${index}`} />
+                ) : (
+                  <button
+                    type="button"
+                    key={item.label}
+                    onClick={() => {
+                      setMoreOpen(false);
+                      item.act();
+                    }}
+                  >
+                    {item.icon}
+                    {item.label}
+                    {item.accel ? <span className="accel">{item.accel}</span> : null}
+                  </button>
+                ),
+              )}
+            </div>
+          ) : null}
+        </div>
       </div>
       <div className="toolbar-side toolbar-right">
-        {narrow ? null : (
-          <button type="button" className="toolbtn" onClick={props.onFind} title={`查找 (${modLabel}+F)`}>
-            <IconSearch />
-            <span>查找</span>
-          </button>
-        )}
+        {props.toolbar.find && !narrow ? (
+          <>
+            <button type="button" className="toolbtn" onClick={props.onFind} title={`查找 (${accel("find")})`}>
+              <IconSearch />
+              <span>查找</span>
+            </button>
+            <button type="button" className="toolbtn" onClick={props.onReplace} title={`替换 (${accel("replace")})`}>
+              <IconReplace />
+              <span>替换</span>
+            </button>
+          </>
+        ) : null}
+        {props.toolbar.rules ? (
         <div className={`rule-chip-wrap${ruleOpen ? " open" : ""}`}>
           <button
             type="button"
@@ -211,7 +277,7 @@ export default function AppToolbar(props: AppToolbarProps) {
                 type="button"
                 onClick={() => {
                   setRuleOpen(false);
-                  props.onManageRules();
+                  props.onOpenSettings("rules");
                 }}
               >
                 管理规则…
@@ -219,15 +285,18 @@ export default function AppToolbar(props: AppToolbarProps) {
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          className="toolbtn icon-only theme-btn"
-          title={`主题：${themeModeLabel(props.themeMode)}`}
-          aria-label={`主题：${themeModeLabel(props.themeMode)}`}
-          onClick={cycleTheme}
-        >
-          <ThemeIcon className="theme-icon" />
-        </button>
+        ) : null}
+        {props.toolbar.theme ? (
+          <button
+            type="button"
+            className="toolbtn icon-only theme-btn"
+            title={`主题：${themeModeLabel(props.themeMode)}`}
+            aria-label={`主题：${themeModeLabel(props.themeMode)}`}
+            onClick={cycleTheme}
+          >
+            <ThemeIcon className="theme-icon" />
+          </button>
+        ) : null}
         <button
           type="button"
           className="toolbtn icon-only"
@@ -241,43 +310,6 @@ export default function AppToolbar(props: AppToolbarProps) {
         >
           <IconSettings />
         </button>
-        <div className={`menu${moreOpen ? " open" : ""}`}>
-          <button
-            type="button"
-            className="toolbtn icon-only"
-            title="更多"
-            aria-label="更多"
-            aria-expanded={moreOpen}
-            onClick={(event) => {
-              event.stopPropagation();
-              setRuleOpen(false);
-              setMoreOpen((open) => !open);
-            }}
-          >
-            <IconMore />
-          </button>
-          {moreOpen ? (
-            <div className="dropdown more-dropdown" role="menu">
-              {moreItems.map((item, index) =>
-                "sep" in item ? (
-                  <div className="sep" key={`sep-${index}`} />
-                ) : (
-                  <button
-                    type="button"
-                    key={item.label}
-                    onClick={() => {
-                      setMoreOpen(false);
-                      item.act();
-                    }}
-                  >
-                    {item.label}
-                    {item.accel ? <span className="accel">{item.accel}</span> : null}
-                  </button>
-                ),
-              )}
-            </div>
-          ) : null}
-        </div>
         <WindowControls />
       </div>
     </header>

@@ -17,6 +17,7 @@ import {
   type FindOptions,
   type MatchHit,
 } from "../editor/findEngine";
+import { IconX } from "../shell/icons";
 
 export interface FindReplaceDialogProps {
   mode: "find" | "replace";
@@ -40,7 +41,7 @@ export interface FindReplaceHandle {
 }
 
 const MIN_W = 360;
-const MIN_H = 220;
+const MIN_H = 180;
 
 const FindReplaceDialog = forwardRef<FindReplaceHandle, FindReplaceDialogProps>(
   function FindReplaceDialog(
@@ -66,11 +67,11 @@ const FindReplaceDialog = forwardRef<FindReplaceHandle, FindReplaceDialogProps>(
     const [useRegex, setUseRegex] = useState(false);
     const [wrap, setWrap] = useState(true);
     const [pos, setPos] = useState({ x: -1, y: 86 });
-    const [size, setSize] = useState({ w: 420, h: 280 });
+    const [size, setSize] = useState<{ w: number; h: number | null }>({ w: 480, h: null });
     const [dragging, setDragging] = useState(false);
     const [resizing, setResizing] = useState(false);
     const dragOffset = useRef({ x: 0, y: 0 });
-    const resizeStart = useRef({ x: 0, y: 0, w: 420, h: 280 });
+    const resizeStart = useRef({ x: 0, y: 0, w: 480, h: 220 });
     const panelRef = useRef<HTMLDivElement>(null);
     const findInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,10 +109,11 @@ const FindReplaceDialog = forwardRef<FindReplaceHandle, FindReplaceDialogProps>(
         const parent = panelRef.current?.offsetParent as HTMLElement | null;
         const pw = parent?.clientWidth ?? window.innerWidth;
         const ph = parent?.clientHeight ?? window.innerHeight;
+        const panelH = panelRef.current?.offsetHeight ?? size.h ?? MIN_H;
         let x = ev.clientX - dragOffset.current.x;
         let y = ev.clientY - dragOffset.current.y;
         x = Math.min(Math.max(0, x), Math.max(0, pw - size.w));
-        y = Math.min(Math.max(0, y), Math.max(0, ph - size.h));
+        y = Math.min(Math.max(0, y), Math.max(0, ph - panelH));
         setPos({ x, y });
       };
       const onUp = () => setDragging(false);
@@ -267,7 +269,7 @@ const FindReplaceDialog = forwardRef<FindReplaceHandle, FindReplaceDialogProps>(
           top: pos.y,
           right: pos.x < 0 ? 20 : "auto",
           width: size.w,
-          height: size.h,
+          height: size.h ?? undefined,
         }}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
@@ -300,14 +302,15 @@ const FindReplaceDialog = forwardRef<FindReplaceHandle, FindReplaceDialogProps>(
             className="find-panel-close"
             onClick={onClose}
             title="关闭"
+            aria-label="关闭"
           >
-            ×
+            <IconX />
           </button>
         </div>
 
         <div className="find-panel-body">
-          <div className="row">
-            <label htmlFor="find-what">{mode === "replace" ? "查找" : "内容"}</label>
+          <label className="find-field" htmlFor="find-what">
+            <span>查找内容</span>
             <input
               id="find-what"
               type="text"
@@ -315,17 +318,17 @@ const FindReplaceDialog = forwardRef<FindReplaceHandle, FindReplaceDialogProps>(
               value={findWhat}
               onChange={(e) => setFindWhat(e.target.value)}
             />
-          </div>
+          </label>
           {mode === "replace" ? (
-            <div className="row">
-              <label htmlFor="replace-with">替换为</label>
+            <label className="find-field" htmlFor="replace-with">
+              <span>替换为</span>
               <input
                 id="replace-with"
                 type="text"
                 value={replaceWith}
                 onChange={(e) => setReplaceWith(e.target.value)}
               />
-            </div>
+            </label>
           ) : null}
 
           <div className="opts find-opts">
@@ -417,7 +420,7 @@ const FindReplaceDialog = forwardRef<FindReplaceHandle, FindReplaceDialogProps>(
               x: e.clientX,
               y: e.clientY,
               w: size.w,
-              h: size.h,
+              h: panelRef.current?.offsetHeight ?? size.h ?? MIN_H,
             };
             setResizing(true);
             e.preventDefault();

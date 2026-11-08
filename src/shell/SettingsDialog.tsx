@@ -9,20 +9,40 @@ import {
   type AppThemeMode,
 } from "../theme/appTheme";
 import type { AppearanceApi } from "../theme/useAppearance";
+import type { RuleSummary } from "../types";
 import { IconMoon, IconSun, IconSunMoon, IconX } from "./icons";
 import { isTauri } from "./platform";
+import {
+  exportSettingsBundle,
+  formatShortcut,
+  normalizeKey,
+  parseSettingsBundle,
+  SHORTCUT_DEFS,
+  stepScale,
+  TOOLBAR_TOGGLES,
+  type CloseUnsaved,
+  type EditorFont,
+  type PrefsApi,
+  type SettingsBundle,
+  type ShortcutChord,
+  type ShortcutId,
+  type TabLayout,
+  type TabMaxWidth,
+} from "./prefs";
 
-type SettingsTab = "appearance" | "editor" | "mcp" | "about";
+export type SettingsSection = "appearance" | "editor" | "rules" | "shortcuts" | "mcp" | "about";
 
-const TABS: { id: SettingsTab; label: string; fields: string[] }[] = [
+const TABS: { id: SettingsSection; label: string; fields: string[] }[] = [
   {
     id: "appearance",
     label: "外观",
-    fields: ["主题", "亮色", "暗色", "跟随系统", "配色", "自定义", "圆角", "珍珠", "薄雾", "石墨", "钴蓝"],
+    fields: ["主题", "亮色", "暗色", "跟随系统", "配色", "自定义", "圆角", "缩放", "标签", "顶栏", "置顶"],
   },
-  { id: "editor", label: "编辑", fields: ["字号", "字体", "自动换行"] },
+  { id: "editor", label: "编辑", fields: ["字号", "字体", "自动换行", "行号", "空白", "关闭"] },
+  { id: "rules", label: "规则", fields: ["规则", "删除", "版本", "当前"] },
+  { id: "shortcuts", label: "快捷键", fields: ["新建", "保存", "查找", "字号", "解析"] },
   { id: "mcp", label: "MCP", fields: ["stdio", "路径", "Cursor", "VS Code", "Claude", "工具", "规则包"] },
-  { id: "about", label: "关于", fields: ["版本", "赞赏"] },
+  { id: "about", label: "关于", fields: ["版本", "赞赏", "导出", "导入"] },
 ];
 
 const THEME_OPTIONS: { value: AppThemeMode; label: string; icon: typeof IconSun }[] = [
@@ -45,30 +65,36 @@ const MCP_CLIENTS = [
 
 interface SettingsDialogProps {
   open: boolean;
+  section: SettingsSection;
   onClose: () => void;
   appearance: AppearanceApi;
+  prefs: PrefsApi;
   fontSize: number;
-  wrap: boolean;
+  rules: RuleSummary[];
+  onDeleteRule: (id: string) => void;
   onBumpFont: (delta: number) => void;
   onResetFont: () => void;
-  onToggleWrap: () => void;
+  onImportSettings: (bundle: SettingsBundle) => void;
   onAppreciate: () => void;
 }
 
 export default function SettingsDialog({
   open,
+  section,
   onClose,
   appearance,
+  prefs,
   fontSize,
-  wrap,
+  rules,
+  onDeleteRule,
   onBumpFont,
   onResetFont,
-  onToggleWrap,
+  onImportSettings,
   onAppreciate,
 }: SettingsDialogProps) {
   const titleId = useId();
   const searchRef = useRef<HTMLInputElement>(null);
-  const [tab, setTab] = useState<SettingsTab>("appearance");
+  const [tab, setTab] = useState<SettingsSection>(section);
   const [query, setQuery] = useState("");
 
   const onCloseRef = useRef(onClose);
@@ -76,9 +102,15 @@ export default function SettingsDialog({
 
   useEffect(() => {
     if (!open) return;
+    setQuery("");
+    setTab(section);
+  }, [open, section]);
+
+  useEffect(() => {
+    if (!open) return;
     const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
+      if (event.key === "Escape" && !event.defaultPrevented) onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -147,13 +179,19 @@ export default function SettingsDialog({
             )}
           </nav>
           <div className="settings-body">
-            {tab === "appearance" ? <AppearancePanel appearance={appearance} /> : null}
+            {tab === "appearance" ? <AppearancePanel appearance={appearance} prefs={prefs} /> : null}
             {tab === "editor" ? (
-              <EditorPanel fontSize={fontSize} wrap={wrap} onBumpFont={onBumpFont} onResetFont={onResetFont} onToggleWrap={onToggleWrap} />
+              <EditorPanel prefs={prefs} fontSize={fontSize} onBumpFont={onBumpFont} onResetFont={onResetFont} />
             ) : null}
+            {tab === "rules" ? <RulesPanel rules={rules} onDelete={onDeleteRule} /> : null}
+            {tab === "shortcuts" ? <ShortcutsPanel prefs={prefs} /> : null}
             {tab === "mcp" ? <McpPanel /> : null}
             {tab === "about" ? (
               <AboutPanel
+                appearance={appearance}
+                prefs={prefs}
+                fontSize={fontSize}
+                onImportSettings={onImportSettings}
                 onAppreciate={() => {
                   onClose();
                   onAppreciate();
@@ -167,7 +205,7 @@ export default function SettingsDialog({
   );
 }
 
-function AppearancePanel({ appearance }: { appearance: AppearanceApi }) {
+function AppearancePanel({ appearance, prefs }: { appearance: AppearanceApi; prefs: PrefsApi }) {
   const { state, setMode, setPalette, setCorner, setCustomColor, resetCustomColors, setPreviewPalette, isDark } =
     appearance;
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -308,23 +346,125 @@ function AppearancePanel({ appearance }: { appearance: AppearanceApi }) {
           ))}
         </div>
       </section>
+
+      <section className="settings-group">
+        <h3>界面</h3>
+        <div className="settings-item">
+          <div>
+            <strong>缩放 {Math.round(prefs.prefs.uiScale * 100)}%</strong>
+            <p>整体界面按比例放大或缩小，范围 80% 到 150%。</p>
+          </div>
+          <div className="choice-row">
+            <button type="button" className="choice-btn" onClick={() => prefs.patch({ uiScale: stepScale(prefs.prefs.uiScale, -0.1) })}>
+              缩小
+            </button>
+            <button type="button" className="choice-btn" onClick={() => prefs.patch({ uiScale: stepScale(prefs.prefs.uiScale, 0.1) })}>
+              放大
+            </button>
+          </div>
+        </div>
+        <div className="settings-item">
+          <div>
+            <strong>标签排列</strong>
+            <p>{prefs.prefs.tabLayout === "wrap" ? "放不下时换到下一行。" : "放不下时在一行里横向滚动。"}</p>
+          </div>
+          <div className="choice-row">
+            {([
+              ["scroll", "滚动"],
+              ["wrap", "换行"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`choice-btn${prefs.prefs.tabLayout === value ? " selected" : ""}`}
+                aria-pressed={prefs.prefs.tabLayout === value}
+                onClick={() => prefs.patch({ tabLayout: value satisfies TabLayout })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="settings-item">
+          <div>
+            <strong>标签宽度</strong>
+            <p>限制每个标签标题的最大宽度。</p>
+          </div>
+          <div className="choice-row">
+            {([
+              ["compact", "紧凑"],
+              ["standard", "标准"],
+              ["wide", "较宽"],
+              ["unlimited", "不限制"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`choice-btn${prefs.prefs.tabMaxWidth === value ? " selected" : ""}`}
+                aria-pressed={prefs.prefs.tabMaxWidth === value}
+                onClick={() => prefs.patch({ tabMaxWidth: value satisfies TabMaxWidth })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="settings-group">
+        <h3>顶栏</h3>
+        <div className="choice-row">
+          {TOOLBAR_TOGGLES.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={`choice-btn${prefs.prefs.toolbar[item.key] ? " selected" : ""}`}
+              aria-pressed={prefs.prefs.toolbar[item.key]}
+              onClick={() =>
+                prefs.patch({
+                  toolbar: { ...prefs.prefs.toolbar, [item.key]: !prefs.prefs.toolbar[item.key] },
+                })
+              }
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="settings-note">隐藏的按钮仍可从「更多」和快捷键使用。设置和「更多」始终保留。</p>
+        {isTauri() ? (
+          <div className="settings-item">
+            <div>
+              <strong>窗口置顶</strong>
+              <p>{prefs.prefs.alwaysOnTop ? "窗口保持在其他窗口之上。" : "窗口按系统的普通层级显示。"}</p>
+            </div>
+            <button
+              type="button"
+              className={`choice-btn${prefs.prefs.alwaysOnTop ? " selected" : ""}`}
+              aria-pressed={prefs.prefs.alwaysOnTop}
+              onClick={() => prefs.patch({ alwaysOnTop: !prefs.prefs.alwaysOnTop })}
+            >
+              {prefs.prefs.alwaysOnTop ? "已开启" : "已关闭"}
+            </button>
+          </div>
+        ) : null}
+      </section>
     </div>
   );
 }
 
 function EditorPanel({
+  prefs,
   fontSize,
-  wrap,
   onBumpFont,
   onResetFont,
-  onToggleWrap,
 }: {
+  prefs: PrefsApi;
   fontSize: number;
-  wrap: boolean;
   onBumpFont: (delta: number) => void;
   onResetFont: () => void;
-  onToggleWrap: () => void;
 }) {
+  const font = prefs.prefs.editorFont;
+  const wrap = prefs.prefs.wrap;
   return (
     <div className="settings-panel">
       <section className="settings-group">
@@ -332,7 +472,7 @@ function EditorPanel({
         <div className="settings-item">
           <div>
             <strong>{fontSize}px</strong>
-            <p>日志编辑器使用 IBM Plex Mono。</p>
+            <p>{font === "system" ? "日志使用系统等宽字体。" : "日志使用 IBM Plex Mono。"}</p>
           </div>
           <div className="choice-row">
             <button type="button" className="choice-btn" onClick={() => onBumpFont(-1)}>
@@ -346,18 +486,225 @@ function EditorPanel({
             </button>
           </div>
         </div>
+        <div className="settings-item">
+          <div>
+            <strong>等宽字体</strong>
+            <p>只在已安装的字体之间切换。</p>
+          </div>
+          <div className="choice-row">
+            {([
+              ["plex", "IBM Plex Mono"],
+              ["system", "界面等宽"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`choice-btn${font === value ? " selected" : ""}`}
+                aria-pressed={font === value}
+                onClick={() => prefs.patch({ editorFont: value satisfies EditorFont })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
       <section className="settings-group">
-        <h3>换行</h3>
+        <h3>显示</h3>
         <div className="settings-item">
           <div>
             <strong>自动换行</strong>
             <p>{wrap ? "长行会在编辑器宽度内折行。" : "长行保持单行，可横向滚动。"}</p>
           </div>
-          <button type="button" className={`choice-btn${wrap ? " selected" : ""}`} aria-pressed={wrap} onClick={onToggleWrap}>
+          <button
+            type="button"
+            className={`choice-btn${wrap ? " selected" : ""}`}
+            aria-pressed={wrap}
+            onClick={() => prefs.patch({ wrap: !wrap })}
+          >
             {wrap ? "已开启" : "已关闭"}
           </button>
         </div>
+        <div className="settings-item">
+          <div>
+            <strong>行号</strong>
+            <p>{prefs.prefs.showLineNumbers ? "左侧显示行号。" : "隐藏行号，腾出横向空间。"}</p>
+          </div>
+          <button
+            type="button"
+            className={`choice-btn${prefs.prefs.showLineNumbers ? " selected" : ""}`}
+            aria-pressed={prefs.prefs.showLineNumbers}
+            onClick={() => prefs.patch({ showLineNumbers: !prefs.prefs.showLineNumbers })}
+          >
+            {prefs.prefs.showLineNumbers ? "已开启" : "已关闭"}
+          </button>
+        </div>
+        <div className="settings-item">
+          <div>
+            <strong>空白字符</strong>
+            <p>{prefs.prefs.showWhitespace ? "空格和制表符会画出来。" : "空白保持不可见。"}</p>
+          </div>
+          <button
+            type="button"
+            className={`choice-btn${prefs.prefs.showWhitespace ? " selected" : ""}`}
+            aria-pressed={prefs.prefs.showWhitespace}
+            onClick={() => prefs.patch({ showWhitespace: !prefs.prefs.showWhitespace })}
+          >
+            {prefs.prefs.showWhitespace ? "已开启" : "已关闭"}
+          </button>
+        </div>
+      </section>
+      <section className="settings-group">
+        <h3>关闭</h3>
+        <div className="settings-item">
+          <div>
+            <strong>未保存的标签</strong>
+            <p>{prefs.prefs.closeUnsaved === "ask" ? "关闭前提示未保存的更改。" : "直接关闭，不保留未保存的更改。"}</p>
+          </div>
+          <div className="choice-row">
+            {([
+              ["ask", "询问"],
+              ["discard", "直接关闭"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`choice-btn${prefs.prefs.closeUnsaved === value ? " selected" : ""}`}
+                aria-pressed={prefs.prefs.closeUnsaved === value}
+                onClick={() => prefs.patch({ closeUnsaved: value satisfies CloseUnsaved })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function RulesPanel({ rules, onDelete }: { rules: RuleSummary[]; onDelete: (id: string) => void }) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  return (
+    <div className="settings-panel">
+      <section className="settings-group">
+        <h3>规则库</h3>
+        <p className="settings-note">当前规则用于解析日志。删除需要再点一次确认。</p>
+        <div className="rule-manage-list">
+          {rules.length === 0 ? (
+            <div className="rule-manage-empty">暂无规则</div>
+          ) : (
+            rules.map((rule) => (
+              <div key={rule.id} className="rule-manage-row">
+                <div className="rule-manage-meta">
+                  <div className="rule-manage-name">
+                    {rule.name}
+                    {rule.active ? <span className="rule-manage-badge">当前</span> : null}
+                  </div>
+                  <div className="rule-manage-ver">v{rule.version}</div>
+                </div>
+                <button
+                  type="button"
+                  className={`rule-manage-del${confirmId === rule.id ? " confirm" : ""}`}
+                  onClick={() => {
+                    if (confirmId === rule.id) {
+                      setConfirmId(null);
+                      onDelete(rule.id);
+                    } else {
+                      setConfirmId(rule.id);
+                    }
+                  }}
+                >
+                  {confirmId === rule.id ? "确认删除" : "删除"}
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ShortcutsPanel({ prefs }: { prefs: PrefsApi }) {
+  const [recording, setRecording] = useState<ShortcutId | null>(null);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (event.key === "Escape") {
+        setRecording(null);
+        return;
+      }
+      if (event.key === "Control" || event.key === "Meta" || event.key === "Alt" || event.key === "Shift") return;
+      const chord: ShortcutChord = {
+        key: normalizeKey(event.key),
+        mod: event.metaKey || event.ctrlKey,
+        shift: event.shiftKey,
+        alt: event.altKey,
+      };
+      const error = prefs.setShortcut(recording, chord);
+      setMessage(error ?? "");
+      if (!error) setRecording(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [prefs, recording]);
+
+  return (
+    <div className="settings-panel">
+      <section className="settings-group">
+        <div className="settings-group-head">
+          <h3>快捷键</h3>
+          <button
+            type="button"
+            className="text-btn"
+            onClick={() => {
+              prefs.resetShortcuts();
+              setMessage("");
+              setRecording(null);
+            }}
+          >
+            全部恢复默认
+          </button>
+        </div>
+        <p className="settings-note">点某一行后按下新组合键。Esc 取消。撤销和重做仍由编辑器处理。</p>
+        <div className="shortcut-list">
+          {SHORTCUT_DEFS.map((item) => (
+            <div className="shortcut-row" key={item.id}>
+              <strong>{item.label}</strong>
+              <div className="choice-row">
+                <button
+                  type="button"
+                  className={`choice-btn keycap${recording === item.id ? " recording" : ""}`}
+                  onClick={() => {
+                    setMessage("");
+                    setRecording(item.id);
+                  }}
+                >
+                  {recording === item.id ? "请按键…" : formatShortcut(prefs.prefs.shortcuts[item.id])}
+                </button>
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={() => {
+                    prefs.resetShortcut(item.id);
+                    setMessage("");
+                    if (recording === item.id) setRecording(null);
+                  }}
+                >
+                  恢复
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        {message ? <p className="shortcut-error">{message}</p> : null}
       </section>
     </div>
   );
@@ -454,7 +801,48 @@ function McpPanel() {
   );
 }
 
-function AboutPanel({ onAppreciate }: { onAppreciate: () => void }) {
+function AboutPanel({
+  appearance,
+  prefs,
+  fontSize,
+  onImportSettings,
+  onAppreciate,
+}: {
+  appearance: AppearanceApi;
+  prefs: PrefsApi;
+  fontSize: number;
+  onImportSettings: (bundle: SettingsBundle) => void;
+  onAppreciate: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [transferMessage, setTransferMessage] = useState("");
+
+  const exportSettings = () => {
+    const json = exportSettingsBundle({
+      appearance: appearance.state,
+      fontSize,
+      prefs: prefs.prefs,
+    });
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "logviewer-settings.json";
+    link.click();
+    URL.revokeObjectURL(url);
+    setTransferMessage("已导出外观、编辑器、顶栏和快捷键。");
+  };
+
+  const importSettings = async (file: File) => {
+    const parsed = parseSettingsBundle(await file.text());
+    if ("error" in parsed) {
+      setTransferMessage(parsed.error);
+      return;
+    }
+    onImportSettings(parsed);
+    setTransferMessage("已导入设置。");
+  };
+
   return (
     <div className="settings-panel">
       <section className="settings-group">
@@ -463,6 +851,30 @@ function AboutPanel({ onAppreciate }: { onAppreciate: () => void }) {
         <button type="button" className="choice-btn" onClick={onAppreciate}>
           赞赏作者
         </button>
+      </section>
+      <section className="settings-group">
+        <h3>设置文件</h3>
+        <p className="settings-note">导出和导入外观、编辑器偏好、顶栏显隐和快捷键。不包含规则库和打开的文档。</p>
+        <div className="choice-row">
+          <button type="button" className="choice-btn" onClick={exportSettings}>
+            导出
+          </button>
+          <button type="button" className="choice-btn" onClick={() => fileRef.current?.click()}>
+            导入
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) void importSettings(file);
+          }}
+        />
+        {transferMessage ? <p className="settings-note">{transferMessage}</p> : null}
       </section>
     </div>
   );

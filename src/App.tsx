@@ -18,7 +18,8 @@ import CodeEditor, { type CodeEditorHandle } from "./editor/CodeEditor";
 import { currentMatchIndex, type MatchHit } from "./editor/findEngine";
 import appreciateQr from "./assets/appreciate.jpg";
 import AppToolbar from "./shell/AppToolbar";
-import SettingsDialog from "./shell/SettingsDialog";
+import { formatShortcut, matchShortcut, usePrefs } from "./shell/prefs";
+import SettingsDialog, { type SettingsSection } from "./shell/SettingsDialog";
 import { useAppearance } from "./theme/useAppearance";
 import "./styles/tokens.css";
 import "./styles/palettes.css";
@@ -181,10 +182,12 @@ export default function App() {
     y: number;
   } | null>(null);
   const [rules, setRules] = useState<RuleSummary[]>([]);
-  const [wrap, setWrap] = useState(false);
   const [fontSize, setFontSize] = useState(loadFontSize);
   const appearance = useAppearance();
+  const prefsApi = usePrefs();
+  const prefs = prefsApi.prefs;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("appearance");
   const [findMode, setFindMode] = useState<"find" | "replace" | null>(null);
   const [findAllOpen, setFindAllOpen] = useState(false);
   const [findAllMatches, setFindAllMatches] = useState<MatchHit[]>([]);
@@ -193,9 +196,7 @@ export default function App() {
   const [parseWidth, setParseWidth] = useState(420);
   const [gotoOpen, setGotoOpen] = useState(false);
   const [passOpen, setPassOpen] = useState<"export" | "import" | "encrypt" | "decrypt" | null>(null);
-  const [rulesManageOpen, setRulesManageOpen] = useState(false);
   const [appreciateOpen, setAppreciateOpen] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [gotoLine, setGotoLine] = useState("1");
   const [passphrase, setPassphrase] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -330,16 +331,15 @@ export default function App() {
     }
   };
 
-  const openRulesManage = () => {
-    setDeleteConfirmId(null);
-    setRulesManageOpen(true);
+  const openSettings = (section: SettingsSection = "appearance") => {
+    setSettingsSection(section);
+    setSettingsOpen(true);
   };
 
   const deleteRule = async (id: string) => {
     const wasActive = rules.find((r) => r.id === id)?.active ?? false;
     try {
       await invoke("delete_rule", { id });
-      setDeleteConfirmId(null);
       const list = await invoke<RuleSummary[]>("list_rules");
       setRules(list);
       const activeRule = list.find((r) => r.active);
@@ -487,7 +487,7 @@ export default function App() {
 
   const closeTab = (id: string) => {
     const tab = docs.find((d) => d.id === id);
-    if (tab?.dirty && !window.confirm(`关闭 ${tab.name}？未保存的更改将丢失。`)) return;
+    if (tab?.dirty && prefs.closeUnsaved === "ask" && !window.confirm(`关闭 ${tab.name}？未保存的更改将丢失。`)) return;
     const idx = docs.findIndex((d) => d.id === id);
     const next = docs.filter((d) => d.id !== id);
     editorRef.current?.closeDocument(id);
@@ -761,86 +761,39 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      const mod = ev.ctrlKey || ev.metaKey;
-      if (mod && ev.shiftKey && (ev.key === "P" || ev.key === "p")) {
+      const command = matchShortcut(ev, prefs.shortcuts);
+      if (command) {
         ev.preventDefault();
-        setParseOpen((v) => !v);
+        if (command === "parse") setParseOpen((v) => !v);
+        else if (command === "find") openFind("find");
+        else if (command === "replace") openFind("replace");
+        else if (command === "goto") setGotoOpen(true);
+        else if (command === "save") void saveFile(false);
+        else if (command === "saveAs") void saveFile(true);
+        else if (command === "open") void openFile();
+        else if (command === "new") {
+          const t = newEmptyTab();
+          editorRef.current?.openDocument(t.id, "");
+          setDocs((p) => [...p, t]);
+          setActiveId(t.id);
+        } else if (command === "closeTab") {
+          if (activeId) closeTab(activeId);
+        } else if (command === "fontUp") bumpFont(FONT_SIZE_STEP);
+        else if (command === "fontDown") bumpFont(-FONT_SIZE_STEP);
+        else if (command === "fontReset") resetFont();
+        else if (command === "findNext" || command === "findPrev") {
+          if (!findMode) openFind("find");
+          requestAnimationFrame(() => {
+            if (command === "findPrev") findRef.current?.findPrev();
+            else findRef.current?.findNext();
+          });
+        } else if (command === "insertDate") insertDateTime();
         return;
       }
-      if (mod && (ev.key === "f" || ev.key === "F")) {
-        ev.preventDefault();
-        openFind("find");
-        return;
-      }
-      if (mod && (ev.key === "h" || ev.key === "H")) {
-        ev.preventDefault();
-        openFind("replace");
-        return;
-      }
-      if (mod && (ev.key === "g" || ev.key === "G")) {
-        ev.preventDefault();
-        setGotoOpen(true);
-        return;
-      }
-      if (mod && (ev.key === "s" || ev.key === "S")) {
-        ev.preventDefault();
-        saveFile(ev.shiftKey);
-        return;
-      }
-      if (mod && (ev.key === "o" || ev.key === "O")) {
-        ev.preventDefault();
-        openFile();
-        return;
-      }
-      if (mod && (ev.key === "n" || ev.key === "N")) {
-        ev.preventDefault();
-        const t = newEmptyTab();
-        editorRef.current?.openDocument(t.id, "");
-        setDocs((p) => [...p, t]);
-        setActiveId(t.id);
-        return;
-      }
-      if (mod && (ev.key === "w" || ev.key === "W")) {
-        ev.preventDefault();
-        if (activeId) closeTab(activeId);
-        return;
-      }
-      if (mod && (ev.key === "=" || ev.key === "+" || ev.key === "Add")) {
-        ev.preventDefault();
-        bumpFont(FONT_SIZE_STEP);
-        return;
-      }
-      if (mod && (ev.key === "-" || ev.key === "_" || ev.key === "Subtract")) {
-        ev.preventDefault();
-        bumpFont(-FONT_SIZE_STEP);
-        return;
-      }
-      if (mod && ev.key === "0") {
-        ev.preventDefault();
-        resetFont();
-        return;
-      }
-      // Undo/redo: let CodeMirror handle when focused; menu still calls undo()/redo().
-      if (ev.key === "F3") {
-        ev.preventDefault();
-        if (!findMode) openFind("find");
-        requestAnimationFrame(() => {
-          if (ev.shiftKey) findRef.current?.findPrev();
-          else findRef.current?.findNext();
-        });
-        return;
-      }
-      if (ev.key === "F5") {
-        ev.preventDefault();
-        insertDateTime();
-        return;
-      }
-      if (ev.key === "Escape") {
+      if (ev.key === "Escape" && !ev.defaultPrevented) {
         setFindMode(null);
         setGotoOpen(false);
         setPassOpen(null);
-        setRulesManageOpen(false);
-        setDeleteConfirmId(null);
         setAppreciateOpen(false);
         setSettingsOpen(false);
       }
@@ -850,10 +803,11 @@ export default function App() {
   });
 
   return (
-    <div className="app">
+    <div className="app" data-editor-font={prefs.editorFont} style={{ zoom: prefs.uiScale }}>
       <AppToolbar
         parseOpen={parseOpen}
-        wrap={wrap}
+        toolbar={prefs.toolbar}
+        shortcutLabel={(id) => formatShortcut(prefs.shortcuts[id])}
         themeMode={appearance.state.mode}
         ruleName={ruleName}
         rules={rules}
@@ -880,15 +834,10 @@ export default function App() {
         onReplace={() => openFind("replace")}
         onGoto={() => setGotoOpen(true)}
         onToggleParse={() => setParseOpen((v) => !v)}
-        onToggleWrap={() => setWrap((v) => !v)}
-        onBumpFont={bumpFont}
-        onResetFont={resetFont}
-        onManageRules={openRulesManage}
         onExportRules={() => setPassOpen("export")}
         onImportRules={() => setPassOpen("import")}
         onEncryptRules={() => setPassOpen("encrypt")}
         onDecryptRules={() => setPassOpen("decrypt")}
-        onAppreciate={() => setAppreciateOpen(true)}
         onUndo={undo}
         onRedo={redo}
         onSelectAll={() => {
@@ -898,11 +847,11 @@ export default function App() {
         onSwitchRule={(id) => {
           void switchRule(id);
         }}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={openSettings}
         onCycleTheme={appearance.setMode}
       />
 
-      <div className="tabs">
+      <div className="tabs" data-layout={prefs.tabLayout} data-width={prefs.tabMaxWidth}>
         {docs.map((d) => (
           <div
             key={d.id}
@@ -941,7 +890,9 @@ export default function App() {
               <CodeEditor
                 ref={editorRef}
                 activeId={activeId}
-                wrap={wrap}
+                wrap={prefs.wrap}
+                showLineNumbers={prefs.showLineNumbers}
+                showWhitespace={prefs.showWhitespace}
                 onCaretChange={(c, sel) => {
                   setCaret(c);
                   setSelRange(sel);
@@ -1030,7 +981,9 @@ export default function App() {
           style={parseOpen ? { width: parseWidth } : undefined}
         >
           <div className="parse-head">
-            <span><strong>解析结果 · {ruleName}</strong></span>
+            <span className="parse-head-title" title={`解析结果 · ${ruleName}`}>
+              <strong>解析结果 · {ruleName}</strong>
+            </span>
             <div className="parse-head-actions">
               <button
                 type="button"
@@ -1188,51 +1141,6 @@ export default function App() {
         </div>
       </div>
 
-      <div className={`dialog${rulesManageOpen ? " show" : ""}`} style={{ width: 420 }}>
-        <h2>管理规则</h2>
-        <div className="rule-manage-list">
-          {rules.length === 0 ? (
-            <div className="rule-manage-empty">暂无规则</div>
-          ) : (
-            rules.map((r) => (
-              <div key={r.id} className="rule-manage-row">
-                <div className="rule-manage-meta">
-                  <div className="rule-manage-name">
-                    {r.name}
-                    {r.active ? <span className="rule-manage-badge">当前</span> : null}
-                  </div>
-                  <div className="rule-manage-ver">v{r.version}</div>
-                </div>
-                <button
-                  type="button"
-                  className={`rule-manage-del${deleteConfirmId === r.id ? " confirm" : ""}`}
-                  onClick={() => {
-                    if (deleteConfirmId === r.id) {
-                      void deleteRule(r.id);
-                    } else {
-                      setDeleteConfirmId(r.id);
-                    }
-                  }}
-                >
-                  {deleteConfirmId === r.id ? "确认删除" : "删除"}
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-        <div className="actions">
-          <button
-            type="button"
-            onClick={() => {
-              setRulesManageOpen(false);
-              setDeleteConfirmId(null);
-            }}
-          >
-            关闭
-          </button>
-        </div>
-      </div>
-
       {appreciateOpen ? (
         <div
           className="appreciate-backdrop"
@@ -1319,13 +1227,22 @@ export default function App() {
 
       <SettingsDialog
         open={settingsOpen}
+        section={settingsSection}
         onClose={() => setSettingsOpen(false)}
         appearance={appearance}
+        prefs={prefsApi}
         fontSize={fontSize}
-        wrap={wrap}
+        rules={rules}
+        onDeleteRule={(id) => {
+          void deleteRule(id);
+        }}
         onBumpFont={bumpFont}
         onResetFont={resetFont}
-        onToggleWrap={() => setWrap((v) => !v)}
+        onImportSettings={(bundle) => {
+          appearance.replace(bundle.appearance);
+          setFontSize(clampFontSize(bundle.fontSize));
+          prefsApi.replace(bundle.prefs);
+        }}
         onAppreciate={() => setAppreciateOpen(true)}
       />
 

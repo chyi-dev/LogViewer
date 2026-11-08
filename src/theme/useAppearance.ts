@@ -69,6 +69,11 @@ export function useAppearance() {
     );
   }, []);
 
+  const replace = useCallback((next: AppearanceState) => {
+    setPreviewPalette(null);
+    setState(next);
+  }, []);
+
   const resetCustomColors = useCallback((dark: boolean) => {
     setState((prev) =>
       dark
@@ -103,6 +108,7 @@ export function useAppearance() {
     setPalette,
     setCorner,
     setCustomColor,
+    replace,
     resetCustomColors,
     isDark: visible.mode === "dark" || (visible.mode === "system" && systemDark),
   };

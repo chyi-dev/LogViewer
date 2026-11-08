@@ -114,10 +114,14 @@
   z-index: 40;
 }
 
-.toolbar .more-dropdown,
 .toolbar .rule-dropdown {
   right: 0;
   left: auto;
+}
+
+.toolbar .dropdown button svg,
+.palette-menu button svg {
+  flex-shrink: 0;
 }
 
 .toolbar .dropdown button,
@@ -360,8 +364,14 @@
   max-width: 640px;
 }
 
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .settings-group h3 {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 13px;
   font-weight: 650;
 }
@@ -377,9 +387,13 @@
   margin: 0;
 }
 
+.settings-group > .settings-note {
+  margin: 0;
+}
+
 .settings-note,
 .settings-item p {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--muted-foreground);
   font-size: 12.5px;
   line-height: 1.5;
@@ -409,6 +423,42 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.shortcut-list {
+  border: 1px solid var(--border);
+  border-radius: var(--dbx-radius-lg);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 12px;
+}
+
+.shortcut-row + .shortcut-row {
+  border-top: 1px solid var(--border);
+}
+
+.shortcut-row strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.keycap.recording {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.shortcut-error {
+  margin: 8px 0 0;
+  color: var(--destructive);
+  font-size: 12.5px;
 }
 
 .choice-btn,
