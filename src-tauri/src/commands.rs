@@ -203,6 +203,19 @@ pub fn read_binary_file(path: String) -> AppResult<Vec<u8>> {
     Ok(std::fs::read(path)?)
 }
 
+/// Sibling of the running app binary: `log-viewer-mcp` / `log-viewer-mcp.exe`.
+#[tauri::command]
+pub fn mcp_server_path() -> String {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.parent().map(PathBuf::from).unwrap_or_default();
+    let name = if cfg!(windows) {
+        "log-viewer-mcp.exe"
+    } else {
+        "log-viewer-mcp"
+    };
+    dir.join(name).to_string_lossy().into_owned()
+}
+
 pub fn init_state(app: &AppHandle) -> AppResult<AppState> {
     let data_dir = app
         .path()

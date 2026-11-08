@@ -17,6 +17,12 @@ import FindReplaceDialog, {
 import CodeEditor, { type CodeEditorHandle } from "./editor/CodeEditor";
 import { currentMatchIndex, type MatchHit } from "./editor/findEngine";
 import appreciateQr from "./assets/appreciate.jpg";
+import AppToolbar from "./shell/AppToolbar";
+import SettingsDialog from "./shell/SettingsDialog";
+import { useAppearance } from "./theme/useAppearance";
+import "./styles/tokens.css";
+import "./styles/palettes.css";
+import "./styles/shell.css";
 import "./styles/workbench.css";
 
 const PARSE_MIN_BUFFER = 80;
@@ -53,8 +59,6 @@ function cacheCovers(
 }
 
 let seq = 1;
-const isMac = navigator.platform.toLowerCase().includes("mac");
-const modLabel = isMac ? "⌘" : "Ctrl";
 
 function ParseBlockView({ block }: { block: DisplayBlock }) {
   switch (block.type) {
@@ -171,7 +175,6 @@ export default function App() {
     toLine: 1,
   });
   const [ruleName, setRuleName] = useState("无规则");
-  const [ruleMenuOpen, setRuleMenuOpen] = useState(false);
   const [editorCtx, setEditorCtx] = useState<{
     line: number;
     x: number;
@@ -180,8 +183,8 @@ export default function App() {
   const [rules, setRules] = useState<RuleSummary[]>([]);
   const [wrap, setWrap] = useState(false);
   const [fontSize, setFontSize] = useState(loadFontSize);
-  const [theme, setTheme] = useState<"paper" | "white" | "dark-paper">("paper");
-  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const appearance = useAppearance();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [findMode, setFindMode] = useState<"find" | "replace" | null>(null);
   const [findAllOpen, setFindAllOpen] = useState(false);
   const [findAllMatches, setFindAllMatches] = useState<MatchHit[]>([]);
@@ -383,11 +386,6 @@ export default function App() {
   useEffect(() => {
     refreshRules();
   }, []);
-
-  useEffect(() => {
-    if (theme === "paper") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = theme;
-  }, [theme]);
 
   useEffect(() => {
     document.documentElement.style.setProperty(
@@ -844,206 +842,65 @@ export default function App() {
         setRulesManageOpen(false);
         setDeleteConfirmId(null);
         setAppreciateOpen(false);
-        setMenuOpen(null);
-        setRuleMenuOpen(false);
+        setSettingsOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const closeMenus = () => {
-    setMenuOpen(null);
-    setRuleMenuOpen(false);
-  };
-
-  const openChromeMenu = (id: string | null) => {
-    setRuleMenuOpen(false);
-    setMenuOpen(id);
-  };
-
   return (
-    <div className="app" onClick={closeMenus}>
-      <div className="chrome" onClick={(e) => e.stopPropagation()}>
-        <div className="brand">LogViewer</div>
-        <Menu
-          id="file"
-          label="文件"
-          open={menuOpen}
-          setOpen={openChromeMenu}
-          items={[
-            {
-              label: "新建",
-              accel: `${modLabel}+N`,
-              act: () => {
-                const t = newEmptyTab();
-                editorRef.current?.openDocument(t.id, "");
-                setDocs((p) => [...p, t]);
-                setActiveId(t.id);
-              },
-            },
-            { label: "打开…", accel: `${modLabel}+O`, act: () => openFile() },
-            { sep: true },
-            { label: "保存", accel: `${modLabel}+S`, act: () => saveFile(false) },
-            { label: "另存为…", accel: `${modLabel}+Shift+S`, act: () => saveFile(true) },
-            { sep: true },
-            { label: "关闭当前标签", accel: `${modLabel}+W`, act: () => activeId && closeTab(activeId) },
-          ]}
-        />
-        <Menu
-          id="edit"
-          label="编辑"
-          open={menuOpen}
-          setOpen={openChromeMenu}
-          items={[
-            { label: "撤销", accel: `${modLabel}+Z`, act: undo },
-            { label: "重做", accel: `${modLabel}+Y`, act: redo },
-            { sep: true },
-            { label: "查找…", accel: `${modLabel}+F`, act: () => openFind("find") },
-            { label: "查找下一个", accel: "F3", act: () => { if (!findMode) openFind("find"); requestAnimationFrame(() => findRef.current?.findNext()); } },
-            { label: "查找上一个", accel: "Shift+F3", act: () => { if (!findMode) openFind("find"); requestAnimationFrame(() => findRef.current?.findPrev()); } },
-            { label: "替换…", accel: `${modLabel}+H`, act: () => openFind("replace") },
-            { label: "转到…", accel: `${modLabel}+G`, act: () => setGotoOpen(true) },
-            { sep: true },
-            { label: "全选", accel: `${modLabel}+A`, act: () => editorRef.current?.selectAll() },
-            { label: "时间/日期", accel: "F5", act: insertDateTime },
-          ]}
-        />
-        <Menu
-          id="format"
-          label="格式"
-          open={menuOpen}
-          setOpen={openChromeMenu}
-          items={[
-            { label: wrap ? "✓ 自动换行" : "自动换行", act: () => setWrap((v) => !v) },
-            { sep: true },
-            {
-              label: "增大字体",
-              accel: `${modLabel}+=`,
-              act: () => bumpFont(FONT_SIZE_STEP),
-            },
-            {
-              label: "减小字体",
-              accel: `${modLabel}+-`,
-              act: () => bumpFont(-FONT_SIZE_STEP),
-            },
-            {
-              label: "默认字号",
-              accel: `${modLabel}+0`,
-              act: () => resetFont(),
-            },
-            { sep: true },
-            { label: theme === "paper" ? "✓ 纸色" : "纸色", act: () => setTheme("paper") },
-            { label: theme === "white" ? "✓ 白" : "白", act: () => setTheme("white") },
-            { label: theme === "dark-paper" ? "✓ 暗纸" : "暗纸", act: () => setTheme("dark-paper") },
-          ]}
-        />
-        <Menu
-          id="parse"
-          label="解析"
-          open={menuOpen}
-          setOpen={openChromeMenu}
-          items={[
-            {
-              label: parseOpen ? "关闭解析分栏" : "打开解析分栏",
-              accel: `${modLabel}+Shift+P`,
-              act: () => setParseOpen((v) => !v),
-            },
-            {
-              label: "解析当前标签",
-              act: () => {
-                setParseOpen(true);
-                void runParseWindow(true);
-              },
-            },
-            ...(rules.length
-              ? [
-                  { sep: true as const },
-                  ...rules.map((r) => ({
-                    label: `${r.active ? "✓ " : ""}${r.name}`,
-                    act: () => {
-                      void switchRule(r.id);
-                    },
-                  })),
-                ]
-              : []),
-            { sep: true },
-            { label: "管理规则…", act: () => openRulesManage() },
-            { label: "导出规则…", act: () => setPassOpen("export") },
-            { label: "导入规则…", act: () => setPassOpen("import") },
-            { label: "加密规则…", act: () => setPassOpen("encrypt") },
-            { label: "解密规则…", act: () => setPassOpen("decrypt") },
-          ]}
-        />
-        <Menu
-          id="help"
-          label="帮助"
-          open={menuOpen}
-          setOpen={openChromeMenu}
-          items={[
-            { label: "赞赏作者…", act: () => setAppreciateOpen(true) },
-          ]}
-        />
-        <button type="button" className="toolbtn" onClick={() => openFind("find")}>查找</button>
-        <button type="button" className="toolbtn" onClick={() => openFind("replace")}>替换</button>
-        <button
-          type="button"
-          className={`toolbtn${parseOpen ? " on" : ""}`}
-          onClick={() => setParseOpen((v) => !v)}
-        >
-          解析分栏
-        </button>
-        <div className="spacer" />
-        <div className={`rule-chip-wrap${ruleMenuOpen ? " open" : ""}`}>
-          <span
-            className="chip rule-chip"
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuOpen(null);
-              setRuleMenuOpen((v) => !v);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setMenuOpen(null);
-                setRuleMenuOpen((v) => !v);
-              }
-            }}
-            title="切换解析规则"
-          >
-            规则 <strong>{ruleName}</strong>
-          </span>
-          {ruleMenuOpen ? (
-            <div className="dropdown rule-dropdown">
-              {rules.map((r) => (
-                <button
-                  type="button"
-                  key={r.id}
-                  onClick={() => {
-                    setRuleMenuOpen(false);
-                    void switchRule(r.id);
-                  }}
-                >
-                  {`${r.active ? "✓ " : ""}${r.name}`}
-                </button>
-              ))}
-              <div className="sep" />
-              <button
-                type="button"
-                onClick={() => {
-                  setRuleMenuOpen(false);
-                  openRulesManage();
-                }}
-              >
-                管理规则…
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <span className="chip">文档 <strong>{docs.length}</strong></span>
-      </div>
+    <div className="app">
+      <AppToolbar
+        parseOpen={parseOpen}
+        wrap={wrap}
+        themeMode={appearance.state.mode}
+        ruleName={ruleName}
+        rules={rules}
+        onToast={showToast}
+        onNew={() => {
+          const t = newEmptyTab();
+          editorRef.current?.openDocument(t.id, "");
+          setDocs((p) => [...p, t]);
+          setActiveId(t.id);
+        }}
+        onOpen={() => {
+          void openFile();
+        }}
+        onSave={() => {
+          void saveFile(false);
+        }}
+        onSaveAs={() => {
+          void saveFile(true);
+        }}
+        onCloseTab={() => {
+          if (activeId) closeTab(activeId);
+        }}
+        onFind={() => openFind("find")}
+        onReplace={() => openFind("replace")}
+        onGoto={() => setGotoOpen(true)}
+        onToggleParse={() => setParseOpen((v) => !v)}
+        onToggleWrap={() => setWrap((v) => !v)}
+        onBumpFont={bumpFont}
+        onResetFont={resetFont}
+        onManageRules={openRulesManage}
+        onExportRules={() => setPassOpen("export")}
+        onImportRules={() => setPassOpen("import")}
+        onEncryptRules={() => setPassOpen("encrypt")}
+        onDecryptRules={() => setPassOpen("decrypt")}
+        onAppreciate={() => setAppreciateOpen(true)}
+        onUndo={undo}
+        onRedo={redo}
+        onSelectAll={() => {
+          editorRef.current?.selectAll();
+        }}
+        onInsertDateTime={insertDateTime}
+        onSwitchRule={(id) => {
+          void switchRule(id);
+        }}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onCycleTheme={appearance.setMode}
+      />
 
       <div className="tabs">
         {docs.map((d) => (
@@ -1460,6 +1317,18 @@ export default function App() {
         </div>
       ) : null}
 
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        appearance={appearance}
+        fontSize={fontSize}
+        wrap={wrap}
+        onBumpFont={bumpFont}
+        onResetFont={resetFont}
+        onToggleWrap={() => setWrap((v) => !v)}
+        onAppreciate={() => setAppreciateOpen(true)}
+      />
+
       {toast ? <div className="error-toast">{toast}</div> : null}
     </div>
   );
@@ -1472,55 +1341,4 @@ async function writeBinary(path: string, data: Uint8Array) {
 async function readBinary(path: string): Promise<Uint8Array> {
   const data = await invoke<number[]>("read_binary_file", { path });
   return Uint8Array.from(data);
-}
-
-type MenuItem =
-  | { sep: true; label?: string; act?: undefined; accel?: string }
-  | { label: string; act: () => void; accel?: string; sep?: false };
-
-function Menu({
-  id,
-  label,
-  open,
-  setOpen,
-  items,
-}: {
-  id: string;
-  label: string;
-  open: string | null;
-  setOpen: (v: string | null) => void;
-  items: MenuItem[];
-}) {
-  return (
-    <div className={`menu${open === id ? " open" : ""}`}>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(open === id ? null : id);
-        }}
-      >
-        {label}
-      </button>
-      <div className="dropdown">
-        {items.map((it, i) =>
-          it.sep ? (
-            <div className="sep" key={`sep-${i}`} />
-          ) : (
-            <button
-              type="button"
-              key={it.label}
-              onClick={() => {
-                setOpen(null);
-                it.act();
-              }}
-            >
-              {it.label}
-              {it.accel ? <span className="accel">{it.accel}</span> : null}
-            </button>
-          ),
-        )}
-      </div>
-    </div>
-  );
 }

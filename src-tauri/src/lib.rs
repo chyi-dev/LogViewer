@@ -10,8 +10,8 @@ pub mod rules;
 
 use commands::{
     decrypt_rule_file, delete_rule, encrypt_rule_json, export_rule, import_rule, list_rules,
-    open_document, parse_text, parse_window, read_binary_file, save_document, set_active_rule,
-    take_launch_files, write_binary_file, AppState, LaunchFiles,
+    mcp_server_path, open_document, parse_text, parse_window, read_binary_file, save_document,
+    set_active_rule, take_launch_files, write_binary_file, AppState, LaunchFiles,
 };
 use launch::{dedupe_paths, parse_launch_args, LaunchAction};
 use std::sync::Mutex;
@@ -83,6 +83,13 @@ pub fn run() {
             // Refresh Open With registration for the current binary (Windows / Linux user).
             let _ = file_assoc::register();
 
+            // macOS keeps the overlay traffic lights. Other desktops use the in-app controls.
+            #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_decorations(false);
+                let _ = window.set_shadow(true);
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -99,7 +106,8 @@ pub fn run() {
             decrypt_rule_file,
             write_binary_file,
             read_binary_file,
-            take_launch_files
+            take_launch_files,
+            mcp_server_path
         ]);
 
     let app = builder

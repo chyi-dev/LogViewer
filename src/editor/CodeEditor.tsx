@@ -79,7 +79,7 @@ function buildTheme(): Extension {
       fontSize: "var(--editor-font-size)",
       fontFamily: "var(--mono)",
       backgroundColor: "transparent",
-      color: "var(--ink)",
+      color: "var(--foreground)",
     },
     ".cm-scroller": {
       fontFamily: "var(--mono)",
@@ -88,16 +88,16 @@ function buildTheme(): Extension {
     },
     ".cm-content": {
       padding: "10px 0",
-      caretColor: "var(--ink)",
+      caretColor: "var(--foreground)",
     },
     ".cm-line": {
       padding: "0 14px 0 4px",
     },
     ".cm-gutters": {
-      backgroundColor: "#efe8db",
-      color: "#9a9082",
+      backgroundColor: "var(--dbx-gutter)",
+      color: "var(--muted-foreground)",
       border: "none",
-      borderRight: "1px solid var(--line)",
+      borderRight: "1px solid var(--border)",
       fontFamily: "var(--mono)",
       fontSize: "var(--editor-font-size)",
       lineHeight: "1.6",
@@ -109,17 +109,17 @@ function buildTheme(): Extension {
     },
     ".cm-activeLineGutter": {
       backgroundColor: "transparent",
-      color: "var(--ink)",
+      color: "var(--foreground)",
     },
     ".cm-activeLine": {
-      backgroundColor: "color-mix(in srgb, var(--select) 70%, transparent)",
+      backgroundColor: "color-mix(in srgb, var(--accent) 70%, transparent)",
     },
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection":
       {
-        backgroundColor: "var(--select)",
+        backgroundColor: "var(--accent)",
       },
     ".cm-cursor, .cm-dropCursor": {
-      borderLeftColor: "var(--ink)",
+      borderLeftColor: "var(--foreground)",
     },
   });
 }
