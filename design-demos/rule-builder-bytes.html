@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>搭规则 · 点报文</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --paper: #ffffff;
+    --paper-2: #fafafa;
+    --ink: #0a0a0a;
+    --muted: #737373;
+    --line: #e5e5e5;
+    --select: #f5f5f5;
+    --fault: #e7000b;
+    --chip-header: #e8e4dc;
+    --chip-len: #ebe8e0;
+    --chip-cmd: #ddd8ce;
+    --chip-field: #d4ebe0;
+    --chip-fault: #f8d9d4;
+    --chip-check: #ececec;
+    --chip-pick: #fff3c4;
+    --radius: 4px;
+    --sans: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  button, input { font: inherit; color: inherit; }
+  .app { height: 100vh; display: flex; flex-direction: column; min-height: 900px; min-width: 1440px; }
+  .chrome {
+    height: 42px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--paper-2);
+  }
+  .brand { font-size: 14px; font-weight: 500; }
+  .chrome-meta { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+  .workspace { flex: 1; display: grid; grid-template-columns: 1fr 400px; min-height: 0; }
+  .builder { padding: 20px 28px 28px; overflow: auto; border-right: 1px solid var(--line); }
+  .lead { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .hint { margin: 0 0 20px; font-size: 14px; color: var(--muted); line-height: 1.5; max-width: 52em; }
+
+  .log-box {
+    border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper-2);
+    padding: 12px 14px; margin-bottom: 18px;
+  }
+  .log-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; letter-spacing: 0.04em; }
+  .log-line {
+    display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--mono); font-size: 13px; line-height: 1.7;
+  }
+  .span {
+    padding: 1px 6px; border-radius: 2px; border: 1px solid transparent; cursor: default;
+  }
+  .span.time { background: #f0f0f0; }
+  .span.device { color: var(--muted); }
+  .span.dir { background: var(--chip-cmd); font-weight: 500; }
+  .span.hex { background: transparent; border-color: var(--line); padding: 1px 4px; }
+
+  .section-title {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    margin: 0 0 10px;
+  }
+  .section-title h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .section-title p { margin: 0; font-size: 12px; color: var(--muted); }
+
+  .bytes {
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 14px; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--paper); user-select: none;
+    margin-bottom: 14px;
+  }
+  .byte {
+    width: 44px; height: 52px; border: 1px solid var(--line); border-radius: var(--radius);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 14px; cursor: pointer; background: var(--paper);
+    position: relative; transition: background 0.08s, border-color 0.08s;
+  }
+  .byte small {
+    position: absolute; bottom: 3px; font-size: 9px; color: var(--muted); letter-spacing: 0.02em;
+    max-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .byte:hover { border-color: #a3a3a3; }
+  .byte.sel { background: var(--chip-pick); border-color: #c9a227; }
+  .byte.role-header { background: var(--chip-header); }
+  .byte.role-len { background: var(--chip-len); }
+  .byte.role-cmd { background: var(--chip-cmd); }
+  .byte.role-field { background: var(--chip-field); }
+  .byte.role-fault { background: var(--chip-fault); }
+  .byte.role-check { background: var(--chip-check); color: var(--muted); }
+
+  .namer {
+    display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end;
+    padding: 14px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper-2); margin-bottom: 16px; min-height: 92px;
+  }
+  .namer.empty { align-items: center; color: var(--muted); font-size: 14px; grid-template-columns: 1fr; }
+  .namer label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .namer .picked {
+    font-family: var(--mono); font-size: 16px; letter-spacing: 0.06em; margin-bottom: 10px;
+  }
+  .namer input[type="text"] {
+    width: 100%; height: 36px; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 0 10px; background: var(--paper);
+  }
+  .namer input:focus { outline: 2px solid #171717; outline-offset: 1px; }
+  .kinds { display: flex; gap: 6px; margin-top: 10px; }
+  .kind {
+    height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper); cursor: pointer; font-size: 13px;
+  }
+  .kind.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .namer-actions { display: flex; flex-direction: column; gap: 8px; }
+  .btn {
+    height: 36px; padding: 0 14px; border: 1px solid var(--ink); border-radius: var(--radius);
+    background: var(--ink); color: var(--paper); cursor: pointer; font-size: 13px; white-space: nowrap;
+  }
+  .btn.ghost { background: var(--paper); color: var(--ink); }
+  .btn:disabled { opacity: 0.35; cursor: default; }
+
+  .named-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px;
+    border-radius: var(--radius); font-size: 13px; border: 1px solid var(--line);
+  }
+  .chip .hx { font-family: var(--mono); letter-spacing: 0.04em; }
+  .chip.role-header { background: var(--chip-header); }
+  .chip.role-len { background: var(--chip-len); }
+  .chip.role-cmd { background: var(--chip-cmd); }
+  .chip.role-field { background: var(--chip-field); }
+  .chip.role-fault { background: var(--chip-fault); }
+  .chip.role-check { background: var(--chip-check); }
+  .chip button {
+    border: 0; background: transparent; cursor: pointer; color: var(--muted); padding: 0; font-size: 14px;
+  }
+
+  .summary {
+    border-top: 1px solid var(--line); padding-top: 16px; font-size: 14px; line-height: 1.65;
+  }
+  .summary strong { font-weight: 600; }
+  .advanced { margin-top: 10px; font-size: 12px; }
+  .advanced a { color: var(--muted); }
+
+  .pane {
+    background: var(--paper-2); padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow: auto;
+  }
+  .pane-label { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+  .card {
+    background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  }
+  .card-head {
+    display: grid; grid-template-columns: 56px 1fr; border-bottom: 1px solid var(--line);
+  }
+  .idx {
+    font-family: var(--mono); font-size: 22px; padding: 12px 0 12px 12px;
+    border-right: 1px solid var(--line); font-variant-numeric: tabular-nums;
+  }
+  .titles { padding: 10px 12px 12px; }
+  .dir { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.08em; }
+  .name { font-size: 18px; font-weight: 600; margin-top: 2px; line-height: 1.25; }
+  .verdict {
+    background: var(--ink); color: var(--paper); padding: 8px 12px;
+    font-size: 13px; letter-spacing: 0.12em; font-weight: 500;
+  }
+  .verdict.ok { background: transparent; color: var(--ink); border-bottom: 1px solid var(--line); }
+  .clauses { margin: 0; padding: 12px 14px 16px; font-size: 14px; line-height: 1.7; }
+  .hx { font-family: var(--mono); letter-spacing: 0.04em; }
+  .mean { color: var(--fault); }
+  .mean.plain { color: var(--ink); }
+  .swatch {
+    display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;
+    vertical-align: middle;
+  }
+  .json-box {
+    display: none; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper); font-family: var(--mono); font-size: 11px; white-space: pre-wrap;
+    color: var(--muted); max-height: 180px; overflow: auto;
+  }
+  .json-box.on { display: block; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="chrome">
+      <div class="brand">LogViewer · 搭规则</div>
+      <div class="chrome-meta">点报文 · 设计稿</div>
+    </header>
+    <div class="workspace">
+      <main class="builder">
+        <h1 class="lead">给报文里的字节起个中文名</h1>
+        <p class="hint">拖选一段字节，告诉我「这段叫什么」。帧头、命令、校验已经认好了——还差状态字段，你来补上。</p>
+
+        <div class="log-box">
+          <div class="log-label">这一行日志</div>
+          <div class="log-line">
+            <span class="span time">2026-11-02 00:00:01.283</span>
+            <span class="span device">Device:/dev/ttyS7</span>
+            <span class="span dir">&lt; 接收</span>
+            <span class="span hex">A5 5A 06 1E 00 00 02 22 47</span>
+          </div>
+        </div>
+
+        <div class="section-title">
+          <h2>报文</h2>
+          <p>按住拖选几个字节 · 点一下也可以</p>
+        </div>
+        <div class="bytes" id="bytes" aria-label="报文字节"></div>
+
+        <div class="namer" id="namer">
+          <div class="empty-msg">先在上面拖选一段还没命名的字节</div>
+        </div>
+
+        <div class="section-title">
+          <h2>已经叫出名字的</h2>
+          <p>同色块会出现在右侧卡片里</p>
+        </div>
+        <div class="named-list" id="named"></div>
+
+        <div class="summary" id="summary"></div>
+        <div class="advanced">
+          <a href="#" id="toggleJson">查看生成的规则</a>
+          ·
+          <a href="#">高级选项</a>
+        </div>
+        <pre class="json-box" id="jsonBox"></pre>
+      </main>
+
+      <aside class="pane">
+        <div class="pane-label">解析卡片预览</div>
+        <article class="card">
+          <div class="card-head">
+            <div class="idx">128</div>
+            <div class="titles">
+              <div class="dir">接收</div>
+              <div class="name" id="cardTitle">查询设备状态应答</div>
+            </div>
+          </div>
+          <div class="verdict" id="cardVerdict">ABNORMAL</div>
+          <p class="clauses" id="cardClauses"></p>
+        </article>
+        <p class="pane-label" style="line-height:1.5">字段名一改，这句「十六进制：说明」跟着变。故障色只出现在你标成故障的那段。</p>
+      </aside>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const BYTES = ["A5", "5A", "06", "1E", "00", "00", "02", "22", "47"];
+  const ROLE_LABEL = {
+    header: "帧头",
+    len: "长度",
+    cmd: "命令",
+    field: "数字",
+    fault: "故障",
+    check: "校验"
+  };
+  const ROLE_CLASS = {
+    header: "role-header",
+    len: "role-len",
+    cmd: "role-cmd",
+    field: "role-field",
+    fault: "role-fault",
+    check: "role-check"
+  };
+
+  /** Prefill: header, len, cmd, checksum named; payload still open for the user. */
+  let segments = [
+    { start: 0, end: 1, name: "接收帧头", role: "header" },
+    { start: 2, end: 2, name: "长度", role: "len" },
+    { start: 3, end: 3, name: "查询设备状态应答", role: "cmd" },
+    { start: 8, end: 8, name: "校验（对上了）", role: "check" }
+  ];
+
+  let drag = null;
+  let pick = null;
+  let draftName = "设备状态";
+  let draftRole = "fault";
+
+  const bytesEl = document.getElementById("bytes");
+  const namerEl = document.getElementById("namer");
+  const namedEl = document.getElementById("named");
+  const summaryEl = document.getElementById("summary");
+  const cardClauses = document.getElementById("cardClauses");
+  const cardVerdict = document.getElementById("cardVerdict");
+  const cardTitle = document.getElementById("cardTitle");
+  const jsonBox = document.getElementById("jsonBox");
+
+  function segAt(i) {
+    return segments.find((s) => i >= s.start && i <= s.end) || null;
+  }
+
+  function overlaps(start, end) {
+    return segments.some((s) => !(end < s.start || start > s.end));
+  }
+
+  function hexOf(start, end) {
+    return BYTES.slice(start, end + 1).join(" ");
+  }
+
+  function renderBytes() {
+    bytesEl.innerHTML = "";
+    BYTES.forEach((hx, i) => {
+      const seg = segAt(i);
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "byte";
+      el.textContent = hx;
+      if (seg) {
+        el.classList.add(ROLE_CLASS[seg.role]);
+        const tag = document.createElement("small");
+        tag.textContent = seg.name;
+        el.appendChild(tag);
+      }
+      if (pick && i >= pick.start && i <= pick.end) el.classList.add("sel");
+      el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        if (seg) {
+          pick = null;
+          draftName = seg.name;
+          draftRole = seg.role === "cmd" ? "field" : seg.role === "header" || seg.role === "len" || seg.role === "check" ? "field" : seg.role;
+          pick = { start: seg.start, end: seg.end, editing: true, id: segments.indexOf(seg) };
+          render();
+          return;
+        }
+        drag = { start: i, end: i };
+        pick = { start: i, end: i };
+        draftName = "设备状态";
+        draftRole = "fault";
+        render();
+      });
+      el.addEventListener("mouseenter", () => {
+        if (!drag) return;
+        pick = {
+          start: Math.min(drag.start, i),
+          end: Math.max(drag.start, i)
+        };
+        renderBytes();
+        renderNamer();
+      });
+      bytesEl.appendChild(el);
+    });
+  }
+
+  window.addEventListener("mouseup", () => {
+    if (!drag) return;
+    drag = null;
+    if (pick && overlaps(pick.start, pick.end) && !pick.editing) {
+      pick = null;
+    }
+    render();
+  });
+
+  function renderNamer() {
+    if (!pick) {
+      namerEl.className = "namer empty";
+      namerEl.innerHTML = '<div class="empty-msg">先在上面拖选一段还没命名的字节</div>';
+      return;
+    }
+    namerEl.className = "namer";
+    const hx = hexOf(pick.start, pick.end);
+    namerEl.innerHTML = `
+      <div>
+        <div class="picked">${hx}</div>
+        <label for="fieldName">这段叫什么</label>
+        <input id="fieldName" type="text" value="${draftName.replace(/"/g, "&quot;")}" maxlength="32" />
+        <div class="kinds">
+          <button type="button" class="kind ${draftRole === "field" ? "on" : ""}" data-role="field">数字</button>
+          <button type="button" class="kind ${draftRole === "status" ? "on" : ""}" data-role="status">状态</button>
+          <button type="button" class="kind ${draftRole === "fault" ? "on" : ""}" data-role="fault">故障</button>
+        </div>
+      </div>
+      <div class="namer-actions">
+        <button type="button" class="btn" id="saveName">${pick.editing ? "更新" : "叫这个"}</button>
+        <button type="button" class="btn ghost" id="clearPick">取消</button>
+      </div>
+    `;
+    const input = document.getElementById("fieldName");
+    input.focus();
+    input.select();
+    input.addEventListener("input", () => { draftName = input.value; });
+    namerEl.querySelectorAll(".kind").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        draftRole = btn.getAttribute("data-role");
+        renderNamer();
+      });
+    });
+    document.getElementById("saveName").addEventListener("click", savePick);
+    document.getElementById("clearPick").addEventListener("click", () => {
+      pick = null;
+      render();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") savePick();
+    });
+  }
+
+  function storageRole(uiRole) {
+    return uiRole === "fault" ? "fault" : "field";
+  }
+
+  function savePick() {
+    if (!pick) return;
+    const name = (document.getElementById("fieldName")?.value || draftName).trim();
+    if (!name) return;
+    const finalRole = storageRole(draftRole);
+    if (pick.editing && typeof pick.id === "number") {
+      const old = segments[pick.id];
+      if (old.role === "header" || old.role === "len" || old.role === "check") {
+        old.name = name;
+      } else if (old.role === "cmd") {
+        old.name = name;
+        cardTitle.textContent = name;
+      } else {
+        old.name = name;
+        old.role = finalRole;
+      }
+    } else {
+      if (overlaps(pick.start, pick.end)) return;
+      segments.push({
+        start: pick.start,
+        end: pick.end,
+        name,
+        role: finalRole
+      });
+      segments.sort((a, b) => a.start - b.start);
+    }
+    pick = null;
+    render();
+  }
+
+  function renderNamed() {
+    namedEl.innerHTML = "";
+    segments.forEach((s, idx) => {
+      const chip = document.createElement("div");
+      chip.className = "chip " + ROLE_CLASS[s.role];
+      chip.innerHTML = `<span class="hx">${hexOf(s.start, s.end)}</span><span>${s.name}</span>`;
+      if (s.role === "field" || s.role === "fault") {
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.setAttribute("aria-label", "去掉");
+        rm.textContent = "×";
+        rm.addEventListener("click", () => {
+          segments.splice(idx, 1);
+          render();
+        });
+        chip.appendChild(rm);
+      }
+      namedEl.appendChild(chip);
+    });
+  }
+
+  function renderCard() {
+    const cmd = segments.find((s) => s.role === "cmd");
+    const fields = segments.filter((s) => s.role === "field" || s.role === "fault");
+    const hasFault = fields.some((s) => s.role === "fault");
+    cardTitle.textContent = cmd ? cmd.name : "未命名命令";
+    cardVerdict.textContent = hasFault || !fields.length ? "ABNORMAL" : "NORMAL";
+    cardVerdict.className = "verdict" + (hasFault || !fields.length ? "" : " ok");
+
+    let html = "";
+    if (cmd) {
+      html += `<span class="swatch" style="background:var(--chip-cmd)"></span><span class="hx">${hexOf(cmd.start, cmd.end)}</span>：${cmd.name}；`;
+    }
+    fields.forEach((f) => {
+      const meanClass = f.role === "fault" ? "mean" : "mean plain";
+      html += `<span class="swatch" style="background:var(--${f.role === "fault" ? "chip-fault" : "chip-field"})"></span><span class="hx">${hexOf(f.start, f.end)}</span>：<span class="${meanClass}">${f.name}${f.role === "fault" ? " · 前门故障 · 无盖" : ""}</span>；`;
+    });
+    if (!fields.length) {
+      html += `<span style="color:var(--muted)">还差一段状态字段——拖选 00 00 02 22</span>`;
+    }
+    cardClauses.innerHTML = html;
+  }
+
+  function renderSummary() {
+    const fields = segments.filter((s) => s.role === "field" || s.role === "fault");
+    const cmd = segments.find((s) => s.role === "cmd");
+    const ready = fields.length > 0;
+    summaryEl.innerHTML = ready
+      ? `<strong>这条规则能认出：</strong>设备串口的接收行；命令「${cmd ? cmd.name : ""}」；字段 ${fields.map((f) => f.name).join("、")}。最后一字节是校验，对上了。`
+      : `<strong>还差一步：</strong>把中间的 <span class="hx">00 00 02 22</span> 拖选出来，起个名字（建议叫「设备状态」，类型选「故障」）。`;
+  }
+
+  function renderJson() {
+    const cmd = segments.find((s) => s.role === "cmd");
+    const fields = segments.filter((s) => s.role === "field" || s.role === "fault");
+    const pack = {
+      id: "demo-device-status",
+      name: "设备状态（设计稿）",
+      version: "0.1.0",
+      commands: [
+        {
+          cmd: 0x1e,
+          name: "DeviceStatusRx",
+          title: cmd ? cmd.name : "查询设备状态应答",
+          dir: "rx",
+          decode: fields.map((f, i) => ({
+            type: "uint",
+            id: "f" + i,
+            label: f.name,
+            note: "由界面生成，设计稿不展示细节"
+          }))
+        }
+      ]
+    };
+    jsonBox.textContent = JSON.stringify(pack, null, 2);
+  }
+
+  function render() {
+    renderBytes();
+    renderNamer();
+    renderNamed();
+    renderCard();
+    renderSummary();
+    renderJson();
+  }
+
+  document.getElementById("toggleJson").addEventListener("click", (e) => {
+    e.preventDefault();
+    jsonBox.classList.toggle("on");
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

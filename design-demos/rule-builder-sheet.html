@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>搭规则 · 协议对照表</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --paper: #ffffff;
+    --paper-2: #fafafa;
+    --ink: #0a0a0a;
+    --muted: #737373;
+    --line: #e5e5e5;
+    --fault: #e7000b;
+    --chip-header: #e8e4dc;
+    --chip-len: #ebe8e0;
+    --chip-cmd: #ddd8ce;
+    --chip-field: #d4ebe0;
+    --chip-fault: #f8d9d4;
+    --chip-check: #ececec;
+    --chip-gap: #fff3c4;
+    --radius: 4px;
+    --sans: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  button, input, select { font: inherit; color: inherit; }
+  .app { height: 100vh; min-height: 900px; min-width: 1440px; display: flex; flex-direction: column; }
+  .chrome {
+    height: 42px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--paper-2);
+  }
+  .brand { font-size: 14px; font-weight: 500; }
+  .chrome-meta { font-size: 12px; color: var(--muted); }
+
+  .workspace { flex: 1; display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+  .frame-band {
+    padding: 18px 28px 16px; border-bottom: 1px solid var(--line); background: var(--paper);
+  }
+  .band-top {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px;
+  }
+  .band-top h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  .band-top p { margin: 0; font-size: 13px; color: var(--muted); }
+  .log {
+    font-family: var(--mono); font-size: 13px; color: var(--muted); margin-bottom: 14px;
+  }
+  .bytes {
+    display: flex; flex-wrap: wrap; gap: 6px; user-select: none;
+  }
+  .byte {
+    width: 48px; height: 54px; border: 1px solid var(--line); border-radius: var(--radius);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 14px; position: relative; background: var(--paper);
+    cursor: default;
+  }
+  .byte small {
+    position: absolute; bottom: 3px; font-size: 9px; color: var(--muted);
+    max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .byte.role-header { background: var(--chip-header); }
+  .byte.role-len { background: var(--chip-len); }
+  .byte.role-cmd { background: var(--chip-cmd); }
+  .byte.role-field { background: var(--chip-field); }
+  .byte.role-fault { background: var(--chip-fault); }
+  .byte.role-check { background: var(--chip-check); color: var(--muted); }
+  .byte.gap { background: var(--chip-gap); border-color: #c9a227; outline: 2px solid #c9a227; outline-offset: 1px; }
+  .byte.row-hot { box-shadow: inset 0 0 0 2px var(--ink); }
+
+  .body {
+    display: grid; grid-template-columns: 1fr 380px; min-height: 0;
+  }
+  .sheet-pane {
+    padding: 18px 28px 28px; overflow: auto; border-right: 1px solid var(--line);
+  }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;
+  }
+  .sheet-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .btn {
+    height: 34px; padding: 0 12px; border-radius: var(--radius); border: 1px solid var(--ink);
+    background: var(--ink); color: var(--paper); cursor: pointer; font-size: 13px;
+  }
+  .btn.ghost { background: var(--paper); color: var(--ink); }
+  .btn:disabled { opacity: 0.35; cursor: default; }
+
+  table.sheet {
+    width: 100%; border-collapse: collapse; font-size: 14px;
+  }
+  table.sheet th {
+    text-align: left; font-weight: 500; font-size: 12px; color: var(--muted);
+    letter-spacing: 0.04em; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  }
+  table.sheet td {
+    padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle;
+  }
+  table.sheet tr { cursor: pointer; }
+  table.sheet tr:hover td { background: var(--paper-2); }
+  table.sheet tr.active td { background: #f5f5f5; }
+  table.sheet tr.gap-row td { background: #fffbeb; }
+  .hx { font-family: var(--mono); letter-spacing: 0.04em; }
+  .kind-pill {
+    display: inline-block; padding: 2px 8px; border-radius: var(--radius);
+    border: 1px solid var(--line); font-size: 12px; background: var(--paper);
+  }
+  .kind-pill.fault { border-color: color-mix(in srgb, var(--fault) 35%, var(--line)); color: var(--fault); }
+  table.sheet input, table.sheet select {
+    width: 100%; height: 32px; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 0 8px; background: var(--paper);
+  }
+  table.sheet input:focus, table.sheet select:focus {
+    outline: 2px solid #171717; outline-offset: 1px;
+  }
+  .row-actions { display: flex; gap: 6px; }
+  .icon-btn {
+    width: 28px; height: 28px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper); cursor: pointer; color: var(--muted); font-size: 14px;
+  }
+  .hint {
+    margin: 14px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5;
+  }
+  .summary {
+    margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-size: 14px; line-height: 1.65;
+  }
+  .advanced { margin-top: 10px; font-size: 12px; }
+  .advanced a { color: var(--muted); }
+  .json-box {
+    display: none; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius);
+    font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: pre-wrap;
+    max-height: 160px; overflow: auto;
+  }
+  .json-box.on { display: block; }
+
+  .card-pane {
+    background: var(--paper-2); padding: 16px; overflow: auto;
+  }
+  .pane-label { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; margin-bottom: 10px; }
+  .card {
+    background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  }
+  .card-head { display: grid; grid-template-columns: 56px 1fr; border-bottom: 1px solid var(--line); }
+  .idx {
+    font-family: var(--mono); font-size: 22px; padding: 12px; border-right: 1px solid var(--line);
+  }
+  .titles { padding: 10px 12px; }
+  .dir { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.08em; }
+  .name { font-size: 18px; font-weight: 600; margin-top: 2px; }
+  .verdict {
+    background: var(--ink); color: var(--paper); padding: 8px 12px;
+    font-size: 13px; letter-spacing: 0.12em;
+  }
+  .verdict.ok { background: transparent; color: var(--ink); border-bottom: 1px solid var(--line); }
+  .clauses { margin: 0; padding: 12px 14px 16px; font-size: 14px; line-height: 1.7; }
+  .mean { color: var(--fault); }
+  .swatch {
+    display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="chrome">
+      <div class="brand">LogViewer · 搭规则</div>
+      <div class="chrome-meta">协议对照表 · 设计稿</div>
+    </header>
+
+    <div class="workspace">
+      <section class="frame-band">
+        <div class="band-top">
+          <h1>把这一帧填进对照表</h1>
+          <p>点表里的一行，上面的字节会跟着亮。空白段是还没命名的。</p>
+        </div>
+        <div class="log">128 · 2026-11-02 00:00:01.283 · Device:/dev/ttyS7 · &lt; 接收</div>
+        <div class="bytes" id="bytes"></div>
+      </section>
+
+      <div class="body">
+        <main class="sheet-pane">
+          <div class="sheet-head">
+            <h2>对照表</h2>
+            <button type="button" class="btn" id="addRow">加一行</button>
+          </div>
+          <table class="sheet">
+            <thead>
+              <tr>
+                <th style="width:28%">这些字节</th>
+                <th style="width:36%">你怎么称呼</th>
+                <th style="width:22%">它是什么</th>
+                <th style="width:14%"></th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <p class="hint" id="gapHint"></p>
+          <div class="summary" id="summary"></div>
+          <div class="advanced">
+            <a href="#" id="toggleJson">查看生成的规则</a>
+            ·
+            <a href="#">高级选项</a>
+          </div>
+          <pre class="json-box" id="jsonBox"></pre>
+        </main>
+
+        <aside class="card-pane">
+          <div class="pane-label">解析卡片预览</div>
+          <article class="card">
+            <div class="card-head">
+              <div class="idx">128</div>
+              <div class="titles">
+                <div class="dir">接收</div>
+                <div class="name" id="cardTitle">查询设备状态应答</div>
+              </div>
+            </div>
+            <div class="verdict" id="cardVerdict">ABNORMAL</div>
+            <p class="clauses" id="cardClauses"></p>
+          </article>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const BYTES = ["A5", "5A", "06", "1E", "00", "00", "02", "22", "47"];
+  const KIND_LABEL = {
+    header: "帧头",
+    len: "长度",
+    cmd: "命令",
+    number: "数字",
+    status: "状态",
+    fault: "故障",
+    check: "校验"
+  };
+  const ROLE_CLASS = {
+    header: "role-header",
+    len: "role-len",
+    cmd: "role-cmd",
+    number: "role-field",
+    status: "role-field",
+    fault: "role-fault",
+    check: "role-check"
+  };
+
+  /** Prefill: everything except the payload field — one gap left for the user. */
+  let rows = [
+    { start: 0, end: 1, name: "接收帧头", kind: "header", locked: true },
+    { start: 2, end: 2, name: "长度", kind: "len", locked: true },
+    { start: 3, end: 3, name: "查询设备状态应答", kind: "cmd", locked: false },
+    { start: 8, end: 8, name: "校验（对上了）", kind: "check", locked: true }
+  ];
+
+  let active = -1;
+  let editingGap = null;
+
+  const bytesEl = document.getElementById("bytes");
+  const tbody = document.getElementById("tbody");
+  const gapHint = document.getElementById("gapHint");
+  const summary = document.getElementById("summary");
+  const cardTitle = document.getElementById("cardTitle");
+  const cardVerdict = document.getElementById("cardVerdict");
+  const cardClauses = document.getElementById("cardClauses");
+  const jsonBox = document.getElementById("jsonBox");
+  const addBtn = document.getElementById("addRow");
+
+  function hexOf(a, b) {
+    return BYTES.slice(a, b + 1).join(" ");
+  }
+
+  function covered() {
+    const map = Array(BYTES.length).fill(false);
+    rows.forEach((r) => {
+      for (let i = r.start; i <= r.end; i++) map[i] = true;
+    });
+    return map;
+  }
+
+  function nextGap() {
+    const map = covered();
+    let start = -1;
+    for (let i = 0; i < map.length; i++) {
+      if (!map[i]) {
+        if (start < 0) start = i;
+      } else if (start >= 0) {
+        return { start, end: i - 1 };
+      }
+    }
+    if (start >= 0) return { start, end: map.length - 1 };
+    return null;
+  }
+
+  function rowAtByte(i) {
+    return rows.findIndex((r) => i >= r.start && i <= r.end);
+  }
+
+  function renderBytes() {
+    const gap = nextGap();
+    bytesEl.innerHTML = "";
+    BYTES.forEach((hx, i) => {
+      const el = document.createElement("div");
+      el.className = "byte";
+      el.textContent = hx;
+      const ri = rowAtByte(i);
+      if (ri >= 0) {
+        el.classList.add(ROLE_CLASS[rows[ri].kind] || "role-field");
+        const tag = document.createElement("small");
+        tag.textContent = rows[ri].name;
+        el.appendChild(tag);
+        if (ri === active) el.classList.add("row-hot");
+      } else if (gap && i >= gap.start && i <= gap.end) {
+        el.classList.add("gap");
+        const tag = document.createElement("small");
+        tag.textContent = "未命名";
+        el.appendChild(tag);
+      }
+      bytesEl.appendChild(el);
+    });
+  }
+
+  function renderTable() {
+    tbody.innerHTML = "";
+    rows.forEach((r, idx) => {
+      const tr = document.createElement("tr");
+      if (idx === active) tr.classList.add("active");
+      tr.innerHTML = `
+        <td class="hx">${hexOf(r.start, r.end)}</td>
+        <td>${r.locked
+          ? r.name
+          : `<input type="text" data-i="${idx}" data-f="name" value="${r.name.replace(/"/g, "&quot;")}" maxlength="32" />`
+        }</td>
+        <td>${r.locked
+          ? `<span class="kind-pill">${KIND_LABEL[r.kind]}</span>`
+          : r.kind === "cmd"
+            ? `<span class="kind-pill">命令</span>`
+            : `<select data-i="${idx}" data-f="kind">
+                <option value="number" ${r.kind === "number" ? "selected" : ""}>数字</option>
+                <option value="status" ${r.kind === "status" ? "selected" : ""}>状态</option>
+                <option value="fault" ${r.kind === "fault" ? "selected" : ""}>故障</option>
+              </select>`
+        }</td>
+        <td class="row-actions">
+          ${r.locked || r.kind === "cmd" ? "" : `<button type="button" class="icon-btn" data-del="${idx}" aria-label="删除">×</button>`}
+        </td>
+      `;
+      tr.addEventListener("mouseenter", () => {
+        active = idx;
+        renderBytes();
+        tbody.querySelectorAll("tr").forEach((row, j) => row.classList.toggle("active", j === idx));
+      });
+      tbody.appendChild(tr);
+    });
+
+    const gap = nextGap();
+    if (gap && editingGap) {
+      const tr = document.createElement("tr");
+      tr.className = "gap-row active";
+      tr.innerHTML = `
+        <td class="hx">${hexOf(gap.start, gap.end)}</td>
+        <td><input type="text" id="gapName" placeholder="例如：设备状态" maxlength="32" value="${(editingGap.name || "").replace(/"/g, "&quot;")}" /></td>
+        <td>
+          <select id="gapKind">
+            <option value="number" ${editingGap.kind === "number" ? "selected" : ""}>数字</option>
+            <option value="status" ${editingGap.kind === "status" ? "selected" : ""}>状态</option>
+            <option value="fault" ${editingGap.kind === "fault" ? "selected" : ""}>故障</option>
+          </select>
+        </td>
+        <td class="row-actions">
+          <button type="button" class="btn" id="saveGap" style="height:28px;padding:0 10px">保存</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+      const nameInput = document.getElementById("gapName");
+      nameInput.focus();
+      document.getElementById("saveGap").addEventListener("click", saveGap);
+      nameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") saveGap();
+      });
+      active = rows.length;
+    }
+
+    tbody.querySelectorAll("input[data-f='name']").forEach((input) => {
+      input.addEventListener("input", () => {
+        const i = Number(input.getAttribute("data-i"));
+        rows[i].name = input.value;
+        if (rows[i].kind === "cmd") cardTitle.textContent = input.value || "未命名";
+        renderBytes();
+        renderCard();
+        renderSummary();
+      });
+      input.addEventListener("click", (e) => e.stopPropagation());
+    });
+    tbody.querySelectorAll("select[data-f='kind']").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const i = Number(sel.getAttribute("data-i"));
+        rows[i].kind = sel.value;
+        render();
+      });
+      sel.addEventListener("click", (e) => e.stopPropagation());
+    });
+    tbody.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        rows.splice(Number(btn.getAttribute("data-del")), 1);
+        editingGap = null;
+        render();
+      });
+    });
+
+    gapHint.textContent = gap
+      ? `还有一段没写进表：${hexOf(gap.start, gap.end)}。点「加一行」把它收进来。`
+      : "这一帧的字节都进表了。";
+    addBtn.disabled = !gap || !!editingGap;
+  }
+
+  function saveGap() {
+    const gap = nextGap();
+    if (!gap) return;
+    const name = (document.getElementById("gapName")?.value || "").trim();
+    const kind = document.getElementById("gapKind")?.value || "fault";
+    if (!name) {
+      document.getElementById("gapName")?.focus();
+      return;
+    }
+    rows.push({ start: gap.start, end: gap.end, name, kind, locked: false });
+    rows.sort((a, b) => a.start - b.start);
+    editingGap = null;
+    render();
+  }
+
+  function renderCard() {
+    const cmd = rows.find((r) => r.kind === "cmd");
+    const fields = rows.filter((r) => r.kind === "number" || r.kind === "status" || r.kind === "fault");
+    const hasFault = fields.some((r) => r.kind === "fault");
+    cardTitle.textContent = cmd ? cmd.name : "未命名命令";
+    const ready = fields.length > 0;
+    cardVerdict.textContent = !ready || hasFault ? "ABNORMAL" : "NORMAL";
+    cardVerdict.className = "verdict" + (ready && !hasFault ? " ok" : "");
+
+    let html = "";
+    if (cmd) {
+      html += `<span class="swatch" style="background:var(--chip-cmd)"></span><span class="hx">${hexOf(cmd.start, cmd.end)}</span>：${cmd.name}；`;
+    }
+    fields.forEach((f) => {
+      const sw = f.kind === "fault" ? "var(--chip-fault)" : "var(--chip-field)";
+      const mean = f.kind === "fault"
+        ? `<span class="mean">${f.name} · 前门故障 · 无盖</span>`
+        : f.name;
+      html += `<span class="swatch" style="background:${sw}"></span><span class="hx">${hexOf(f.start, f.end)}</span>：${mean}；`;
+    });
+    if (!fields.length) {
+      html += `<span style="color:var(--muted)">对照表还缺状态字段</span>`;
+    }
+    cardClauses.innerHTML = html;
+  }
+
+  function renderSummary() {
+    const cmd = rows.find((r) => r.kind === "cmd");
+    const fields = rows.filter((r) => r.kind === "number" || r.kind === "status" || r.kind === "fault");
+    summary.innerHTML = fields.length
+      ? `<strong>这条规则能认出：</strong>设备串口的接收行；命令「${cmd ? cmd.name : ""}」；字段 ${fields.map((f) => f.name).join("、")}。最后一字节是校验，对上了。`
+      : `<strong>还差一行：</strong>把 <span class="hx">00 00 02 22</span> 写进表，起个中文名。`;
+  }
+
+  function renderJson() {
+    jsonBox.textContent = JSON.stringify({
+      id: "demo-device-status",
+      name: "设备状态（设计稿）",
+      version: "0.1.0",
+      rows: rows.map((r) => ({
+        bytes: hexOf(r.start, r.end),
+        name: r.name,
+        kind: KIND_LABEL[r.kind]
+      }))
+    }, null, 2);
+  }
+
+  function render() {
+    renderBytes();
+    renderTable();
+    renderCard();
+    renderSummary();
+    renderJson();
+  }
+
+  addBtn.addEventListener("click", () => {
+    const gap = nextGap();
+    if (!gap) return;
+    editingGap = { name: "设备状态", kind: "fault" };
+    active = rows.length;
+    render();
+  });
+
+  document.getElementById("toggleJson").addEventListener("click", (e) => {
+    e.preventDefault();
+    jsonBox.classList.toggle("on");
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

@@ -802,6 +802,16 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  useEffect(() => {
+    // Bubble phase so CodeMirror can handle editor contextmenu first.
+    // Capture + preventDefault would make CM ignore the event (defaultPrevented).
+    const blockSystemMenu = (ev: Event) => {
+      ev.preventDefault();
+    };
+    document.addEventListener("contextmenu", blockSystemMenu);
+    return () => document.removeEventListener("contextmenu", blockSystemMenu);
+  }, []);
+
   return (
     <div className="app" data-editor-font={prefs.editorFont} style={{ zoom: prefs.uiScale }}>
       <AppToolbar

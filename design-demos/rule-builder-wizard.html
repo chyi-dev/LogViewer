@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>搭规则 · 五步问话</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --paper: #ffffff;
+    --paper-2: #fafafa;
+    --ink: #0a0a0a;
+    --muted: #737373;
+    --line: #e5e5e5;
+    --fault: #e7000b;
+    --chip-cmd: #ddd8ce;
+    --chip-field: #d4ebe0;
+    --chip-fault: #f8d9d4;
+    --chip-pick: #fff3c4;
+    --radius: 4px;
+    --sans: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  button, input { font: inherit; color: inherit; }
+  .app { height: 100vh; min-height: 900px; min-width: 1440px; display: flex; flex-direction: column; }
+  .chrome {
+    height: 42px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--paper-2);
+  }
+  .brand { font-size: 14px; font-weight: 500; }
+  .chrome-meta { font-size: 12px; color: var(--muted); }
+
+  .stage {
+    flex: 1; display: grid; grid-template-rows: auto 1fr auto; min-height: 0;
+    max-width: 920px; width: 100%; margin: 0 auto; padding: 0 32px;
+  }
+  .progress {
+    display: flex; gap: 8px; padding: 28px 0 8px; align-items: center;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--line);
+  }
+  .dot.on { background: var(--ink); }
+  .dot.done { background: #a3a3a3; }
+  .step-count { margin-left: auto; font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+
+  .panel { display: flex; flex-direction: column; justify-content: center; min-height: 0; padding: 12px 0 24px; }
+  .q { margin: 0 0 10px; font-size: 32px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.2; }
+  .sub { margin: 0 0 28px; font-size: 15px; color: var(--muted); line-height: 1.55; max-width: 36em; }
+
+  .log-strip {
+    font-family: var(--mono); font-size: 14px; line-height: 1.8;
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper-2); margin-bottom: 22px;
+  }
+  .mark {
+    padding: 1px 5px; border-radius: 2px; background: var(--chip-pick); border: 1px solid #e0c35a;
+  }
+  .mark.soft { background: #f0f0f0; border-color: transparent; }
+  .mark.dir { background: var(--chip-cmd); border-color: transparent; }
+  .mark.hex { background: transparent; border: 1px dashed #a3a3a3; }
+
+  .choices { display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+  .choice {
+    text-align: left; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper); cursor: pointer; font-size: 15px; line-height: 1.45;
+  }
+  .choice:hover { border-color: #a3a3a3; }
+  .choice.on { border-color: var(--ink); background: var(--paper-2); box-shadow: inset 3px 0 0 var(--ink); }
+  .choice small { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }
+
+  .bytes {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; user-select: none;
+  }
+  .byte {
+    width: 48px; height: 56px; border: 1px solid var(--line); border-radius: var(--radius);
+    font-family: var(--mono); font-size: 15px; background: var(--paper); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative;
+  }
+  .byte small { position: absolute; bottom: 4px; font-size: 9px; color: var(--muted); }
+  .byte.dim { opacity: 0.45; }
+  .byte.glow { background: var(--chip-pick); border-color: #c9a227; }
+  .byte.named-header { background: #e8e4dc; }
+  .byte.named-cmd { background: var(--chip-cmd); }
+  .byte.named-check { background: #ececec; color: var(--muted); }
+  .byte.named-field { background: var(--chip-field); }
+  .byte.named-fault { background: var(--chip-fault); }
+
+  .field-form { max-width: 420px; }
+  .field-form label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .field-form input {
+    width: 100%; height: 42px; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 0 12px; font-size: 16px; margin-bottom: 14px; background: var(--paper);
+  }
+  .field-form input:focus { outline: 2px solid #171717; outline-offset: 1px; }
+  .kinds { display: flex; gap: 8px; margin-bottom: 8px; }
+  .kind {
+    height: 34px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper); cursor: pointer; font-size: 14px;
+  }
+  .kind.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  .card {
+    border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+    max-width: 420px; background: var(--paper);
+  }
+  .card-head { display: grid; grid-template-columns: 56px 1fr; border-bottom: 1px solid var(--line); }
+  .idx {
+    font-family: var(--mono); font-size: 22px; padding: 12px; border-right: 1px solid var(--line);
+  }
+  .titles { padding: 10px 12px; }
+  .dir { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.08em; }
+  .name { font-size: 18px; font-weight: 600; margin-top: 2px; }
+  .verdict {
+    background: var(--ink); color: var(--paper); padding: 8px 12px;
+    font-size: 13px; letter-spacing: 0.12em;
+  }
+  .verdict.ok { background: transparent; color: var(--ink); border-bottom: 1px solid var(--line); }
+  .clauses { margin: 0; padding: 12px 14px 16px; font-size: 14px; line-height: 1.7; }
+  .hx { font-family: var(--mono); letter-spacing: 0.04em; }
+  .mean { color: var(--fault); }
+  .done-box {
+    margin-top: 20px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper-2); font-size: 14px; line-height: 1.65; max-width: 520px;
+  }
+
+  .footer {
+    display: flex; align-items: center; gap: 10px; padding: 16px 0 28px;
+    border-top: 1px solid var(--line);
+  }
+  .btn {
+    height: 40px; padding: 0 18px; border-radius: var(--radius); border: 1px solid var(--ink);
+    background: var(--ink); color: var(--paper); cursor: pointer; font-size: 14px;
+  }
+  .btn.ghost { background: var(--paper); color: var(--ink); }
+  .btn:disabled { opacity: 0.35; cursor: default; }
+  .footer .spacer { flex: 1; }
+  .footer a { font-size: 12px; color: var(--muted); }
+  .json-box {
+    display: none; margin-top: 12px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius);
+    font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: pre-wrap; max-height: 140px; overflow: auto;
+  }
+  .json-box.on { display: block; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="chrome">
+      <div class="brand">LogViewer · 搭规则</div>
+      <div class="chrome-meta">五步问话 · 设计稿</div>
+    </header>
+
+    <div class="stage">
+      <div class="progress" id="progress"></div>
+      <div class="panel" id="panel"></div>
+      <div class="footer">
+        <button type="button" class="btn ghost" id="back">上一步</button>
+        <div class="spacer"></div>
+        <a href="#" id="toggleJson">查看生成的规则</a>
+        <a href="#">高级选项</a>
+        <button type="button" class="btn" id="next">下一步</button>
+      </div>
+      <pre class="json-box" id="jsonBox"></pre>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const BYTES = ["A5", "5A", "06", "1E", "00", "00", "02", "22", "47"];
+  const STEPS = ["认行", "认帧头", "起命令名", "划字段", "确认卡片"];
+
+  const state = {
+    step: 0,
+    lineOk: true,
+    headerOk: true,
+    cmdName: "查询设备状态应答",
+    fieldStart: 4,
+    fieldEnd: 7,
+    fieldName: "",
+    fieldKind: "fault",
+    dragging: null
+  };
+
+  const panel = document.getElementById("panel");
+  const progress = document.getElementById("progress");
+  const backBtn = document.getElementById("back");
+  const nextBtn = document.getElementById("next");
+  const jsonBox = document.getElementById("jsonBox");
+
+  function hexOf(a, b) {
+    return BYTES.slice(a, b + 1).join(" ");
+  }
+
+  function fieldReady() {
+    return state.fieldName.trim().length > 0;
+  }
+
+  function renderProgress() {
+    progress.innerHTML = STEPS.map((_, i) => {
+      const cls = i === state.step ? "on" : i < state.step ? "done" : "";
+      return `<span class="dot ${cls}"></span>`;
+    }).join("") + `<span class="step-count">${state.step + 1} / ${STEPS.length}</span>`;
+  }
+
+  function logStrip(mode) {
+    const time = `<span class="mark soft">2026-11-02 00:00:01.283</span>`;
+    const device = ` Device:/dev/ttyS7 `;
+    const dir = `<span class="mark dir">&lt; 接收</span>`;
+    const hex = mode === "hex"
+      ? ` <span class="mark hex">${BYTES.join(" ")}</span>`
+      : ` ${BYTES.join(" ")}`;
+    return `<div class="log-strip">${time}${device}${dir}${hex}</div>`;
+  }
+
+  function renderBytes(opts) {
+    const { highlight, named } = opts;
+    return `<div class="bytes" id="byteRow">${BYTES.map((hx, i) => {
+      let cls = "byte";
+      if (named) {
+        if (i <= 1) cls += " named-header";
+        else if (i === 2) cls += " dim";
+        else if (i === 3) cls += " named-cmd";
+        else if (i === 8) cls += " named-check";
+        else if (i >= state.fieldStart && i <= state.fieldEnd && fieldReady()) {
+          cls += state.fieldKind === "fault" ? " named-fault" : " named-field";
+        }
+      }
+      if (highlight && i >= highlight[0] && i <= highlight[1]) cls += " glow";
+      if (opts.dimOutside && highlight && (i < highlight[0] || i > highlight[1]) && !(named && (i <= 3 || i === 8))) {
+        if (!cls.includes("named-")) cls += " dim";
+      }
+      const label = named
+        ? (i <= 1 ? "帧头" : i === 2 ? "长度" : i === 3 ? "命令" : i === 8 ? "校验" : (i >= state.fieldStart && i <= state.fieldEnd && fieldReady() ? state.fieldName : ""))
+        : "";
+      return `<button type="button" class="${cls}" data-i="${i}">${hx}${label ? `<small>${label}</small>` : ""}</button>`;
+    }).join("")}</div>`;
+  }
+
+  function renderCard() {
+    const hasFault = fieldReady() && state.fieldKind === "fault";
+    const verdict = fieldReady() ? (hasFault ? "ABNORMAL" : "NORMAL") : "ABNORMAL";
+    const mean = fieldReady()
+      ? (hasFault
+          ? `<span class="mean">${state.fieldName} · 前门故障 · 无盖</span>`
+          : state.fieldName)
+      : `<span style="color:var(--muted)">还没起名</span>`;
+    return `
+      <article class="card">
+        <div class="card-head">
+          <div class="idx">128</div>
+          <div class="titles">
+            <div class="dir">接收</div>
+            <div class="name">${state.cmdName || "未命名"}</div>
+          </div>
+        </div>
+        <div class="verdict ${fieldReady() && !hasFault ? "ok" : ""}">${verdict}</div>
+        <p class="clauses">
+          <span class="hx">1E</span>：${state.cmdName || "未命名"}；
+          <span class="hx">00 00 02 22</span>：${mean}；
+        </p>
+      </article>
+    `;
+  }
+
+  function renderStep() {
+    renderProgress();
+    backBtn.disabled = state.step === 0;
+    nextBtn.textContent = state.step === STEPS.length - 1 ? "完成" : "下一步";
+
+    if (state.step === 0) {
+      nextBtn.disabled = !state.lineOk;
+      panel.innerHTML = `
+        <h1 class="q">这行日志里，哪一段是报文？</h1>
+        <p class="sub">先认出行的结构。时间、方向已经帮你标出来了——确认后面那串十六进制就是要解析的报文。</p>
+        ${logStrip("hex")}
+        <div class="choices">
+          <button type="button" class="choice ${state.lineOk ? "on" : ""}" data-v="yes">
+            对，A5 5A … 47 就是报文
+            <small>设备串口 · 接收方向</small>
+          </button>
+          <button type="button" class="choice" data-v="no">
+            不对，我想换一行样例
+            <small>设计稿里先用这一行演示</small>
+          </button>
+        </div>
+      `;
+      panel.querySelectorAll(".choice").forEach((el) => {
+        el.addEventListener("click", () => {
+          if (el.getAttribute("data-v") === "yes") {
+            state.lineOk = true;
+            renderStep();
+          }
+        });
+      });
+      return;
+    }
+
+    if (state.step === 1) {
+      nextBtn.disabled = !state.headerOk;
+      panel.innerHTML = `
+        <h1 class="q">开头两个字节是帧头吗？</h1>
+        <p class="sub">接收帧通常以 A5 5A 开头。点一下确认，后面的长度、命令、校验会自动收好。</p>
+        ${logStrip("plain")}
+        ${renderBytes({ highlight: [0, 1], named: false })}
+        <div class="choices">
+          <button type="button" class="choice ${state.headerOk ? "on" : ""}" data-v="yes">
+            是，A5 5A 是接收帧头
+            <small>长度 06 · 命令 1E · 最后一字节是校验，对上了</small>
+          </button>
+        </div>
+      `;
+      panel.querySelector(".choice").addEventListener("click", () => {
+        state.headerOk = true;
+        renderStep();
+      });
+      return;
+    }
+
+    if (state.step === 2) {
+      nextBtn.disabled = !state.cmdName.trim();
+      panel.innerHTML = `
+        <h1 class="q">这条命令，你怎么称呼？</h1>
+        <p class="sub">命令字节是 1E。起一个同事能看懂的中文名，会出现在解析卡片标题上。</p>
+        ${renderBytes({ highlight: [3, 3], named: true, dimOutside: true })}
+        <div class="field-form">
+          <label for="cmdName">命令名称</label>
+          <input id="cmdName" type="text" value="${state.cmdName.replace(/"/g, "&quot;")}" maxlength="32" />
+        </div>
+      `;
+      const input = document.getElementById("cmdName");
+      input.focus();
+      input.addEventListener("input", () => {
+        state.cmdName = input.value;
+        nextBtn.disabled = !state.cmdName.trim();
+      });
+      return;
+    }
+
+    if (state.step === 3) {
+      nextBtn.disabled = !fieldReady();
+      const hx = hexOf(state.fieldStart, state.fieldEnd);
+      panel.innerHTML = `
+        <h1 class="q">中间这段，叫什么？</h1>
+        <p class="sub">拖选还没命名的字节，起中文名。类型只用三个词：数字、状态、故障。</p>
+        ${renderBytes({ highlight: [state.fieldStart, state.fieldEnd], named: true })}
+        <div class="field-form">
+          <label>已选 <span class="hx">${hx}</span></label>
+          <label for="fieldName">这段叫什么</label>
+          <input id="fieldName" type="text" placeholder="例如：设备状态" value="${state.fieldName.replace(/"/g, "&quot;")}" maxlength="32" />
+          <div class="kinds">
+            <button type="button" class="kind ${state.fieldKind === "field" ? "on" : ""}" data-k="field">数字</button>
+            <button type="button" class="kind ${state.fieldKind === "status" ? "on" : ""}" data-k="status">状态</button>
+            <button type="button" class="kind ${state.fieldKind === "fault" ? "on" : ""}" data-k="fault">故障</button>
+          </div>
+        </div>
+      `;
+      bindByteDrag();
+      const input = document.getElementById("fieldName");
+      if (!state.dragging && document.activeElement !== input) {
+        input.focus();
+      }
+      input.addEventListener("input", () => {
+        state.fieldName = input.value;
+        nextBtn.disabled = !fieldReady();
+      });
+      panel.querySelectorAll(".kind").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          state.fieldKind = btn.getAttribute("data-k");
+          const kept = document.getElementById("fieldName")?.value || state.fieldName;
+          state.fieldName = kept;
+          renderStep();
+        });
+      });
+      return;
+    }
+
+    // step 4 confirm
+    nextBtn.disabled = false;
+    panel.innerHTML = `
+      <h1 class="q">卡片长这样，可以吗？</h1>
+      <p class="sub">字段名一改，说明句跟着变。确认后就能用来解析同类日志。</p>
+      ${renderCard()}
+      <div class="done-box">
+        <strong>这条规则能认出：</strong>
+        设备串口的接收行；命令「${state.cmdName}」；
+        字段 ${fieldReady() ? state.fieldName : "（未命名）"}。
+        最后一字节是校验，对上了。
+      </div>
+    `;
+  }
+
+  function paintByteGlow() {
+    const row = document.getElementById("byteRow");
+    if (!row) return;
+    row.querySelectorAll(".byte").forEach((el) => {
+      const i = Number(el.getAttribute("data-i"));
+      el.classList.toggle("glow", i >= state.fieldStart && i <= state.fieldEnd);
+    });
+    const label = panel.querySelector(".field-form label .hx");
+    if (label) label.textContent = hexOf(state.fieldStart, state.fieldEnd);
+  }
+
+  function bindByteDrag() {
+    const row = document.getElementById("byteRow");
+    if (!row) return;
+    row.querySelectorAll(".byte").forEach((el) => {
+      el.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        const i = Number(el.getAttribute("data-i"));
+        if (i < 4 || i > 7) return;
+        state.dragging = i;
+        state.fieldStart = i;
+        state.fieldEnd = i;
+        paintByteGlow();
+      });
+      el.addEventListener("mouseenter", () => {
+        if (state.dragging == null) return;
+        const i = Number(el.getAttribute("data-i"));
+        if (i < 4 || i > 7) return;
+        state.fieldStart = Math.min(state.dragging, i);
+        state.fieldEnd = Math.max(state.dragging, i);
+        paintByteGlow();
+      });
+    });
+  }
+
+  window.addEventListener("mouseup", () => {
+    if (state.dragging == null) return;
+    state.dragging = null;
+  });
+
+  backBtn.addEventListener("click", () => {
+    if (state.step > 0) {
+      state.step -= 1;
+      renderStep();
+    }
+  });
+
+  nextBtn.addEventListener("click", () => {
+    if (state.step < STEPS.length - 1) {
+      if (state.step === 3 && !fieldReady()) return;
+      state.step += 1;
+      renderStep();
+    } else {
+      nextBtn.textContent = "已完成";
+      nextBtn.disabled = true;
+    }
+  });
+
+  document.getElementById("toggleJson").addEventListener("click", (e) => {
+    e.preventDefault();
+    jsonBox.textContent = JSON.stringify({
+      id: "demo-device-status",
+      name: "设备状态（设计稿）",
+      version: "0.1.0",
+      commands: [{
+        cmd: 0x1e,
+        title: state.cmdName,
+        field: state.fieldName || null,
+        kind: state.fieldKind
+      }]
+    }, null, 2);
+    jsonBox.classList.toggle("on");
+  });
+
+  renderStep();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>搭规则 · 协议对照表 v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" />
+<style>
+  :root {
+    --paper: #ffffff;
+    --paper-2: #fafafa;
+    --ink: #0a0a0a;
+    --muted: #737373;
+    --line: #e5e5e5;
+    --fault: #e7000b;
+    --chip-field: #d4ebe0;
+    --chip-fault: #f8d9d4;
+    --chip-cmd: #ddd8ce;
+    --chip-pick: #fff3c4;
+    --chip-other: #e8e4dc;
+    --radius: 4px;
+    --sans: "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: var(--sans); }
+  button, input, select { font: inherit; color: inherit; }
+  .app { height: 100vh; min-height: 900px; min-width: 1440px; display: flex; flex-direction: column; }
+  .chrome {
+    height: 42px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--paper-2);
+  }
+  .brand { font-size: 14px; font-weight: 500; }
+  .chrome-meta { font-size: 12px; color: var(--muted); }
+
+  .workspace { flex: 1; display: grid; grid-template-rows: auto auto 1fr; min-height: 0; }
+
+  .lines {
+    padding: 14px 28px 12px; border-bottom: 1px solid var(--line); background: var(--paper);
+  }
+  .lines h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
+  .lines .sub { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+  .line-list { display: flex; flex-direction: column; gap: 6px; }
+  .line {
+    display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; align-items: center;
+    padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper); cursor: pointer; text-align: left; width: 100%;
+  }
+  .line:hover { border-color: #a3a3a3; }
+  .line.teach { border-color: var(--ink); box-shadow: inset 3px 0 0 var(--ink); background: var(--paper-2); }
+  .line .ln { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  .line .txt { font-family: var(--mono); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .line .tag {
+    font-size: 11px; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap;
+  }
+  .line.teach .tag { color: var(--ink); font-weight: 500; }
+  .line.verify-mark .tag { color: var(--muted); }
+
+  .frame-band {
+    padding: 14px 28px 14px; border-bottom: 1px solid var(--line);
+  }
+  .band-row {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px;
+  }
+  .band-row h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .band-row p { margin: 0; font-size: 12px; color: var(--muted); }
+  .bytes {
+    display: flex; flex-wrap: wrap; gap: 6px; user-select: none; min-height: 54px;
+  }
+  .byte {
+    width: 48px; height: 54px; border: 1px solid var(--line); border-radius: var(--radius);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 14px; position: relative; background: var(--paper);
+    cursor: pointer;
+  }
+  .byte small {
+    position: absolute; bottom: 3px; font-size: 9px; color: var(--muted);
+    max-width: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .byte.sel { background: var(--chip-pick); border-color: #c9a227; }
+  .byte.sel-range { outline: 2px solid #c9a227; outline-offset: 1px; }
+  .byte.named-field { background: var(--chip-field); }
+  .byte.named-fault { background: var(--chip-fault); }
+  .byte.named-cmd { background: var(--chip-cmd); }
+  .byte.named-other { background: var(--chip-other); }
+  .byte.row-hot { box-shadow: inset 0 0 0 2px var(--ink); }
+  .endian-bar {
+    display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    margin: 0 0 8px; font-size: 12px; color: var(--muted);
+  }
+  .endian-bar .kind {
+    height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper); cursor: pointer; font-size: 12px; color: var(--ink);
+  }
+  .endian-bar .kind.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .sel-preview {
+    margin-top: 8px; font-size: 12px; color: var(--muted); font-family: var(--mono);
+    line-height: 1.5;
+  }
+
+  .body { display: grid; grid-template-columns: 1fr 400px; min-height: 0; }
+  .sheet-pane { padding: 16px 28px 28px; overflow: auto; border-right: 1px solid var(--line); }
+  .sheet-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;
+  }
+  .sheet-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+  .sheet-actions { display: flex; gap: 8px; }
+  .btn {
+    height: 34px; padding: 0 12px; border-radius: var(--radius); border: 1px solid var(--ink);
+    background: var(--ink); color: var(--paper); cursor: pointer; font-size: 13px;
+  }
+  .btn.ghost { background: var(--paper); color: var(--ink); }
+  .btn:disabled { opacity: 0.35; cursor: default; }
+
+  table.sheet { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.sheet th {
+    text-align: left; font-weight: 500; font-size: 12px; color: var(--muted);
+    letter-spacing: 0.04em; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  }
+  table.sheet td {
+    padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top;
+  }
+  table.sheet tr.row-main { cursor: pointer; }
+  table.sheet tr.row-main:hover td { background: var(--paper-2); }
+  table.sheet tr.row-main.active td { background: #f5f5f5; }
+  table.sheet input, table.sheet select {
+    width: 100%; height: 32px; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 0 8px; background: var(--paper);
+  }
+  table.sheet input:focus, table.sheet select:focus {
+    outline: 2px solid #171717; outline-offset: 1px;
+  }
+  .hx { font-family: var(--mono); letter-spacing: 0.04em; }
+  .icon-btn {
+    width: 28px; height: 28px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--paper); cursor: pointer; color: var(--muted); font-size: 14px;
+  }
+  .map-cell { background: var(--paper-2); }
+  .map-box { padding: 4px 0 8px; }
+  .readout {
+    font-family: var(--mono); font-size: 13px; color: var(--muted); margin-bottom: 8px;
+  }
+  .map-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .map-table th {
+    font-size: 11px; color: var(--muted); font-weight: 500; padding: 4px 6px;
+    border-bottom: 1px solid var(--line); text-align: left;
+  }
+  .map-table td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .map-table input[type="text"] { height: 28px; }
+  .map-table input[type="number"] { width: 72px; height: 28px; }
+  .map-table .bit { font-family: var(--mono); width: 56px; }
+  .hit { color: var(--ink); font-weight: 500; }
+  .miss { color: var(--muted); }
+  .fault-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .add-enum {
+    margin-top: 8px; height: 28px; padding: 0 10px; border: 1px dashed var(--line);
+    border-radius: var(--radius); background: transparent; cursor: pointer; font-size: 12px; color: var(--muted);
+  }
+  .empty-sheet {
+    padding: 24px; border: 1px dashed var(--line); border-radius: var(--radius);
+    color: var(--muted); font-size: 14px; line-height: 1.55; margin-bottom: 12px;
+  }
+  .hint { margin: 12px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .summary {
+    margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line);
+    font-size: 14px; line-height: 1.65;
+  }
+  .advanced { margin-top: 10px; font-size: 12px; }
+  .advanced a { color: var(--muted); }
+  .json-box {
+    display: none; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius);
+    font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: pre-wrap;
+    max-height: 160px; overflow: auto;
+  }
+  .json-box.on { display: block; }
+
+  .card-pane { background: var(--paper-2); padding: 16px; overflow: auto; display: flex; flex-direction: column; gap: 14px; }
+  .pane-label { font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+  .card {
+    background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  }
+  .card-head { display: grid; grid-template-columns: 56px 1fr; border-bottom: 1px solid var(--line); }
+  .idx { font-family: var(--mono); font-size: 20px; padding: 12px; border-right: 1px solid var(--line); }
+  .titles { padding: 10px 12px; }
+  .dir { font-family: var(--mono); font-size: 12px; color: var(--muted); letter-spacing: 0.08em; }
+  .name { font-size: 17px; font-weight: 600; margin-top: 2px; line-height: 1.25; }
+  .verdict {
+    background: var(--ink); color: var(--paper); padding: 8px 12px;
+    font-size: 12px; letter-spacing: 0.12em;
+  }
+  .verdict.ok { background: transparent; color: var(--ink); border-bottom: 1px solid var(--line); }
+  .clauses { margin: 0; padding: 12px 14px 16px; font-size: 14px; line-height: 1.7; }
+  .mean { color: var(--fault); }
+  .card-note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: -4px 0 0; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="chrome">
+      <div class="brand">LogViewer · 搭规则</div>
+      <div class="chrome-meta">协议对照表 v2 · 设计稿</div>
+    </header>
+
+    <div class="workspace">
+      <section class="lines">
+        <h1>选一行当教学帧</h1>
+        <p class="sub">点哪行就用哪行搭规则。另一行自动当验证帧——同规则、不同数值，用来证明不是只认这一串字节。</p>
+        <div class="line-list" id="lineList"></div>
+      </section>
+
+      <section class="frame-band">
+        <div class="band-row">
+          <h2>教学帧字节</h2>
+          <p id="byteHint">拖选多个字节，或点一下再 Shift+点另一端；多字节可读大端/小端</p>
+        </div>
+        <div class="bytes" id="bytes"></div>
+        <div class="sel-preview" id="selPreview"></div>
+      </section>
+
+      <div class="body">
+        <main class="sheet-pane">
+          <div class="sheet-head">
+            <h2>对照表</h2>
+            <div class="sheet-actions">
+              <button type="button" class="btn ghost" id="clearSel">清除选区</button>
+              <button type="button" class="btn" id="addRow">加一行</button>
+            </div>
+          </div>
+          <div id="emptySheet" class="empty-sheet" hidden></div>
+          <table class="sheet">
+            <thead>
+              <tr>
+                <th style="width:16%">这些字节</th>
+                <th style="width:18%">你怎么称呼</th>
+                <th style="width:14%">怎么读</th>
+                <th style="width:12%">端序</th>
+                <th style="width:12%">它是什么</th>
+                <th style="width:8%"></th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <p class="hint" id="gapHint"></p>
+          <div class="summary" id="summary"></div>
+          <div class="advanced">
+            <a href="#" id="toggleJson">查看生成的规则</a>
+            ·
+            <a href="#">高级选项</a>
+          </div>
+          <pre class="json-box" id="jsonBox"></pre>
+        </main>
+
+        <aside class="card-pane">
+          <div class="pane-label">教学帧 · 用来搭规则</div>
+          <article class="card" id="teachCard"></article>
+          <div class="pane-label">验证帧 · 同一套规则</div>
+          <article class="card" id="verifyCard"></article>
+          <p class="card-note">字段名和对照文案来自规则；数字来自各自那一帧。改对照，两张卡片一起变。</p>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const LINES = [
+    {
+      id: "abnormal",
+      ln: 128,
+      dir: "接收",
+      text: "2026-11-02 00:00:01.283  Device:/dev/ttyS7  <  A5 5A 06 1E 00 00 02 22 47",
+      bytes: ["A5", "5A", "06", "1E", "00", "00", "02", "22", "47"]
+    },
+    {
+      id: "normal",
+      ln: 136,
+      dir: "接收",
+      text: "2026-11-02 00:00:03.110  Device:/dev/ttyS7  <  A5 5A 06 1E 00 00 00 00 25",
+      bytes: ["A5", "5A", "06", "1E", "00", "00", "00", "00", "25"]
+    },
+    {
+      id: "other",
+      ln: 140,
+      dir: "发送",
+      text: "2026-11-02 00:00:04.002  Device:/dev/ttyS7  >  AA 55 03 1E 76",
+      bytes: ["AA", "55", "03", "1E", "76"]
+    }
+  ];
+
+  const READ_LABEL = { hex: "原样十六进制", dec: "十进制", bits: "按位" };
+  const ENDIAN_LABEL = { be: "大端", le: "小端" };
+  const ROLE_LABEL = { field: "字段", cmd: "命令", header: "帧头", check: "校验", other: "其它" };
+
+  /** Prefill: only a demo command row; payload mapping left for the user. */
+  let teachId = "abnormal";
+  let verifyId = "normal";
+  let rows = [
+    {
+      start: 3,
+      end: 3,
+      name: "查询设备状态应答",
+      read: "hex",
+      endian: "be",
+      role: "cmd",
+      enumMap: [],
+      bitMap: []
+    }
+  ];
+  let active = 0;
+  let pick = null;
+  let dragging = null;
+  let pickAnchor = null;
+  let draftEndian = "be";
+
+  const lineList = document.getElementById("lineList");
+  const bytesEl = document.getElementById("bytes");
+  const tbody = document.getElementById("tbody");
+  const emptySheet = document.getElementById("emptySheet");
+  const gapHint = document.getElementById("gapHint");
+  const byteHint = document.getElementById("byteHint");
+  const summary = document.getElementById("summary");
+  const teachCard = document.getElementById("teachCard");
+  const verifyCard = document.getElementById("verifyCard");
+  const jsonBox = document.getElementById("jsonBox");
+  const addBtn = document.getElementById("addRow");
+  const selPreview = document.getElementById("selPreview");
+
+  function teach() { return LINES.find((l) => l.id === teachId); }
+  function verify() { return LINES.find((l) => l.id === verifyId); }
+
+  function hexOf(bytes, a, b) {
+    return bytes.slice(a, b + 1).join(" ");
+  }
+
+  function parseUint(bytes, start, end, endian) {
+    // Use *256 not << so values stay correct past signed 32-bit.
+    let n = 0;
+    if (endian === "le") {
+      for (let i = end; i >= start; i--) {
+        n = n * 256 + parseInt(bytes[i], 16);
+      }
+    } else {
+      for (let i = start; i <= end; i++) {
+        n = n * 256 + parseInt(bytes[i], 16);
+      }
+    }
+    return n;
+  }
+
+  function needsEndian(row) {
+    return row.read !== "hex" && row.end > row.start;
+  }
+
+  function bitWidth(start, end) {
+    return (end - start + 1) * 8;
+  }
+
+  function ensureBitMap(row) {
+    const w = bitWidth(row.start, row.end);
+    if (!row.bitMap) row.bitMap = [];
+    while (row.bitMap.length < w) {
+      row.bitMap.push({ label: "", fault: false });
+    }
+    if (row.bitMap.length > w) row.bitMap.length = w;
+  }
+
+  function covered() {
+    const n = teach().bytes.length;
+    const map = Array(n).fill(false);
+    rows.forEach((r) => {
+      for (let i = r.start; i <= r.end; i++) {
+        if (i < n) map[i] = true;
+      }
+    });
+    return map;
+  }
+
+  function nextGap() {
+    const map = covered();
+    let start = -1;
+    for (let i = 0; i < map.length; i++) {
+      if (!map[i]) {
+        if (start < 0) start = i;
+      } else if (start >= 0) {
+        return { start, end: i - 1 };
+      }
+    }
+    if (start >= 0) return { start, end: map.length - 1 };
+    return null;
+  }
+
+  function overlaps(start, end) {
+    return rows.some((r) => !(end < r.start || start > r.end));
+  }
+
+  function rowAtByte(i) {
+    return rows.findIndex((r) => i >= r.start && i <= r.end);
+  }
+
+  function roleClass(role, read, bitMap) {
+    if (role === "cmd") return "named-cmd";
+    if (role === "header" || role === "check" || role === "other") return "named-other";
+    if (read === "bits" && (bitMap || []).some((b) => b.fault && b.label)) return "named-fault";
+    return "named-field";
+  }
+
+  function renderLines() {
+    lineList.innerHTML = "";
+    LINES.forEach((line) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "line";
+      if (line.id === teachId) btn.classList.add("teach");
+      if (line.id === verifyId) btn.classList.add("verify-mark");
+      let tag = "";
+      if (line.id === teachId) tag = "教学帧";
+      else if (line.id === verifyId) tag = "验证帧";
+      else tag = "点此作教学帧";
+      btn.innerHTML = `<span class="ln">${line.ln}</span><span class="txt">${line.text.replace(/</g, "&lt;")}</span><span class="tag">${tag}</span>`;
+      btn.addEventListener("click", () => {
+        if (line.id === teachId) return;
+        const prevTeach = teachId;
+        teachId = line.id;
+        if (verifyId === teachId) verifyId = prevTeach;
+        if (verifyId === teachId) {
+          const other = LINES.find((l) => l.id !== teachId);
+          verifyId = other ? other.id : teachId;
+        }
+        // Drop rows that no longer fit the new frame length
+        const len = teach().bytes.length;
+        rows = rows.filter((r) => r.end < len);
+        pick = null;
+        active = rows.length ? 0 : -1;
+        render();
+      });
+      btn.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        if (line.id === teachId) return;
+        verifyId = line.id;
+        render();
+      });
+      lineList.appendChild(btn);
+    });
+  }
+
+  function renderBytes() {
+    const bytes = teach().bytes;
+    bytesEl.innerHTML = "";
+    bytes.forEach((hx, i) => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "byte";
+      el.textContent = hx;
+      const ri = rowAtByte(i);
+      if (ri >= 0) {
+        const r = rows[ri];
+        el.classList.add(roleClass(r.role, r.read, r.bitMap));
+        const tag = document.createElement("small");
+        tag.textContent = r.name || "未命名";
+        el.appendChild(tag);
+        if (ri === active) el.classList.add("row-hot");
+      }
+      if (pick && i >= pick.start && i <= pick.end) {
+        el.classList.add("sel");
+        if (pick.end > pick.start) el.classList.add("sel-range");
+      }
+      el.addEventListener("mousedown", (ev) => {
+        ev.preventDefault();
+        if (ri >= 0) {
+          active = ri;
+          pick = null;
+          pickAnchor = null;
+          dragging = null;
+          render();
+          return;
+        }
+        if (ev.shiftKey && pickAnchor != null) {
+          pick = { start: Math.min(pickAnchor, i), end: Math.max(pickAnchor, i) };
+          dragging = null;
+          renderBytes();
+          updateSelPreview();
+          updateAddEnabled();
+          return;
+        }
+        dragging = i;
+        pickAnchor = i;
+        pick = { start: i, end: i };
+        renderBytes();
+        updateSelPreview();
+        updateAddEnabled();
+      });
+      el.addEventListener("mouseenter", () => {
+        if (dragging == null) return;
+        pick = { start: Math.min(dragging, i), end: Math.max(dragging, i) };
+        renderBytes();
+        updateSelPreview();
+        updateAddEnabled();
+      });
+      bytesEl.appendChild(el);
+    });
+    updateSelPreview();
+  }
+
+  function updateSelPreview() {
+    const bytes = teach().bytes;
+    if (!pick) {
+      byteHint.textContent = "拖选多个字节，或点一下再 Shift+点另一端；多字节可读大端/小端";
+      selPreview.innerHTML = "";
+      return;
+    }
+    const count = pick.end - pick.start + 1;
+    const selText = hexOf(bytes, pick.start, pick.end);
+    byteHint.textContent = `已选 ${count} 字节：${selText} · 点「加一行」写进对照表`;
+    if (count === 1) {
+      selPreview.innerHTML = `单字节 · 十进制 ${parseUint(bytes, pick.start, pick.end, "be")} · 不涉及端序`;
+      return;
+    }
+    const be = parseUint(bytes, pick.start, pick.end, "be");
+    const le = parseUint(bytes, pick.start, pick.end, "le");
+    selPreview.innerHTML = `
+      <span class="endian-bar">
+        选区预览
+        <button type="button" class="kind ${draftEndian === "be" ? "on" : ""}" data-draft-endian="be">大端 ${be}</button>
+        <button type="button" class="kind ${draftEndian === "le" ? "on" : ""}" data-draft-endian="le">小端 ${le}</button>
+      </span>
+      <div>进表后按所选端序做十进制 / 按位对照（bit0 = 拼好后整数的最低位）</div>
+    `;
+    selPreview.querySelectorAll("[data-draft-endian]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        draftEndian = btn.getAttribute("data-draft-endian");
+        updateSelPreview();
+      });
+    });
+  }
+
+  window.addEventListener("mouseup", () => {
+    dragging = null;
+  });
+
+  function updateAddEnabled() {
+    if (!pick) {
+      addBtn.disabled = !nextGap();
+      return;
+    }
+    addBtn.disabled = overlaps(pick.start, pick.end);
+  }
+
+  function applyResult(row, bytes) {
+    if (row.end >= bytes.length) {
+      return { text: "（此帧没有这段）", fault: false, raw: "" };
+    }
+    const rawHex = hexOf(bytes, row.start, row.end);
+    if (row.read === "hex") {
+      return { text: row.name || rawHex, fault: false, raw: rawHex, display: rawHex };
+    }
+    const endian = row.endian || "be";
+    if (row.read === "dec") {
+      const n = parseUint(bytes, row.start, row.end, endian);
+      const hit = (row.enumMap || []).find((m) => Number(m.value) === n && m.label);
+      return {
+        text: hit ? hit.label : String(n),
+        fault: false,
+        raw: rawHex,
+        display: String(n) + (needsEndian(row) ? `（${ENDIAN_LABEL[endian]}）` : ""),
+        mapped: !!hit
+      };
+    }
+    // bits — after assembling with endian, bit0 is LSB of that integer
+    ensureBitMap(row);
+    const n = parseUint(bytes, row.start, row.end, endian);
+    const w = bitWidth(row.start, row.end);
+    const hits = [];
+    let fault = false;
+    for (let i = 0; i < w; i++) {
+      const on = ((n >> i) & 1) === 1;
+      const m = row.bitMap[i];
+      if (on && m && m.label) {
+        hits.push(m.label);
+        if (m.fault) fault = true;
+      }
+    }
+    return {
+      text: hits.length ? hits.join(" · ") : (n === 0 ? "无" : "有置位未对照"),
+      fault,
+      raw: rawHex,
+      display: "0b" + n.toString(2).padStart(Math.min(w, 16), "0") + (needsEndian(row) ? `（${ENDIAN_LABEL[endian]}）` : ""),
+      mapped: hits.length > 0
+    };
+  }
+
+  function commandTitle() {
+    const cmd = rows.find((r) => r.role === "cmd");
+    return (cmd && cmd.name) || "未命名命令";
+  }
+
+  function renderCard(el, line, label) {
+    const title = commandTitle();
+    const ordered = [
+      ...rows.filter((r) => r.role === "cmd"),
+      ...rows.filter((r) => r.role !== "cmd")
+    ];
+    let anyFault = false;
+    let clauses = "";
+    ordered.forEach((r) => {
+      const res = applyResult(r, line.bytes);
+      if (res.fault) anyFault = true;
+      if (r.end >= line.bytes.length) {
+        clauses += `<span style="color:var(--muted)">${r.name || "字段"}：此帧没有这段；</span>`;
+        return;
+      }
+      if (r.role === "cmd" && r.read === "hex") {
+        clauses += `<span class="hx">${res.raw}</span>：${r.name || "未命名"}；`;
+        return;
+      }
+      const meanClass = res.fault ? "mean" : "";
+      const body = r.read === "hex"
+        ? (r.name || res.raw)
+        : `<span class="${meanClass}">${res.text}</span>`;
+      clauses += `<span class="hx">${res.raw}</span>：${r.read === "hex" ? body : ((r.name ? r.name + " · " : "") + body)}；`;
+    });
+    if (!rows.length) {
+      clauses = `<span style="color:var(--muted)">对照表还是空的</span>`;
+    }
+    const hasBitFaultRule = rows.some((r) => r.read === "bits" && (r.bitMap || []).some((b) => b.fault && b.label));
+    const verdict = !rows.length
+      ? "—"
+      : anyFault
+        ? "ABNORMAL"
+        : hasBitFaultRule
+          ? "NORMAL"
+          : "—";
+    const ok = verdict === "NORMAL";
+    el.innerHTML = `
+      <div class="card-head">
+        <div class="idx">${line.ln}</div>
+        <div class="titles">
+          <div class="dir">${line.dir} · ${label}</div>
+          <div class="name">${title}</div>
+        </div>
+      </div>
+      <div class="verdict ${ok ? "ok" : ""}">${verdict}</div>
+      <p class="clauses">${clauses}</p>
+    `;
+  }
+
+  function renderTable() {
+    emptySheet.hidden = rows.length > 0;
+    if (!rows.length) {
+      emptySheet.textContent = "对照表是空的。在上面拖选字节，点「加一行」。建议先把命令字收进来，再给载荷做按位对照。";
+    }
+
+    tbody.innerHTML = "";
+    rows.forEach((row, idx) => {
+      ensureBitMap(row);
+      if (!row.enumMap) row.enumMap = [];
+
+      const tr = document.createElement("tr");
+      tr.className = "row-main" + (idx === active ? " active" : "");
+      const multi = row.end > row.start;
+      const endianDisabled = !needsEndian(row);
+      tr.innerHTML = `
+        <td class="hx">${hexOf(teach().bytes, row.start, row.end)}<div style="font-size:11px;color:var(--muted);margin-top:2px">${row.end - row.start + 1} 字节</div></td>
+        <td><input type="text" data-i="${idx}" data-f="name" value="${(row.name || "").replace(/"/g, "&quot;")}" maxlength="32" /></td>
+        <td>
+          <select data-i="${idx}" data-f="read">
+            <option value="hex" ${row.read === "hex" ? "selected" : ""}>原样十六进制</option>
+            <option value="dec" ${row.read === "dec" ? "selected" : ""}>十进制</option>
+            <option value="bits" ${row.read === "bits" ? "selected" : ""}>按位</option>
+          </select>
+        </td>
+        <td>
+          ${endianDisabled
+            ? `<span style="font-size:12px;color:var(--muted)">${multi ? "原样无端序" : "单字节"}</span>`
+            : `<select data-i="${idx}" data-f="endian">
+                <option value="be" ${(row.endian || "be") === "be" ? "selected" : ""}>大端</option>
+                <option value="le" ${row.endian === "le" ? "selected" : ""}>小端</option>
+              </select>`
+          }
+        </td>
+        <td>
+          <select data-i="${idx}" data-f="role">
+            <option value="field" ${row.role === "field" ? "selected" : ""}>字段</option>
+            <option value="cmd" ${row.role === "cmd" ? "selected" : ""}>命令</option>
+            <option value="header" ${row.role === "header" ? "selected" : ""}>帧头</option>
+            <option value="check" ${row.role === "check" ? "selected" : ""}>校验</option>
+            <option value="other" ${row.role === "other" ? "selected" : ""}>其它</option>
+          </select>
+        </td>
+        <td><button type="button" class="icon-btn" data-del="${idx}" aria-label="删除">×</button></td>
+      `;
+      tr.addEventListener("click", () => {
+        active = idx;
+        pick = null;
+        pickAnchor = null;
+        renderBytes();
+        tbody.querySelectorAll("tr.row-main").forEach((r, j) => r.classList.toggle("active", j === idx));
+      });
+      tbody.appendChild(tr);
+
+      const mapTr = document.createElement("tr");
+      mapTr.innerHTML = `<td colspan="6" class="map-cell">${mapEditorHtml(row, idx)}</td>`;
+      tbody.appendChild(mapTr);
+    });
+
+    tbody.querySelectorAll("input[data-f], select[data-f]").forEach((el) => {
+      el.addEventListener("click", (e) => e.stopPropagation());
+      el.addEventListener("change", onFieldChange);
+      el.addEventListener("input", onFieldChange);
+    });
+    tbody.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        rows.splice(Number(btn.getAttribute("data-del")), 1);
+        active = Math.min(active, rows.length - 1);
+        render();
+      });
+    });
+    bindMapEditors();
+
+    const gap = nextGap();
+    gapHint.textContent = pick
+      ? `选区 ${hexOf(teach().bytes, pick.start, pick.end)} 还没进表。`
+      : gap
+        ? `还有未命名字节：${hexOf(teach().bytes, gap.start, gap.end)}。拖选后点「加一行」，或直接点「加一行」收下一段空隙。`
+        : rows.length
+          ? "这一帧进表的字节都齐了。右侧验证帧应套同一套对照。"
+          : "";
+    updateAddEnabled();
+  }
+
+  function mapEditorHtml(row, idx) {
+    const bytes = teach().bytes;
+    const res = applyResult(row, bytes);
+    if (row.read === "hex") {
+      return `<div class="map-box"><div class="readout">原样：${res.raw} · 不做数值对照，适合命令名</div></div>`;
+    }
+    const endian = row.endian || "be";
+    if (row.read === "dec") {
+      const rowsHtml = (row.enumMap || []).map((m, mi) => `
+        <tr>
+          <td><input type="number" data-enum="${idx}" data-mi="${mi}" data-ef="value" value="${m.value}" /></td>
+          <td><input type="text" data-enum="${idx}" data-mi="${mi}" data-ef="label" value="${(m.label || "").replace(/"/g, "&quot;")}" placeholder="中文说明" /></td>
+          <td><button type="button" class="icon-btn" data-enum-del="${idx}" data-mi="${mi}">×</button></td>
+        </tr>
+      `).join("");
+      return `
+        <div class="map-box">
+          <div class="readout">教学帧读数：${res.display}${needsEndian(row) ? ` · 换端序会改变这个数` : ""}</div>
+          <table class="map-table">
+            <thead><tr><th>等于</th><th>文案</th><th></th></tr></thead>
+            <tbody>${rowsHtml || '<tr><td colspan="3" style="color:var(--muted);font-size:12px">还没有对照。加上「等于 N → 文案」。</td></tr>'}</tbody>
+          </table>
+          <button type="button" class="add-enum" data-add-enum="${idx}">加一条对照</button>
+        </div>
+      `;
+    }
+    // bits
+    const n = parseUint(bytes, row.start, row.end, endian);
+    const w = bitWidth(row.start, row.end);
+    const bitRows = [];
+    for (let i = 0; i < w; i++) {
+      const on = ((n >> i) & 1) === 1;
+      const m = row.bitMap[i] || { label: "", fault: false };
+      bitRows.push(`
+        <tr class="${on ? "hit" : "miss"}">
+          <td class="bit">bit${i}${on ? " · 1" : " · 0"}</td>
+          <td><input type="text" data-bit="${idx}" data-bi="${i}" data-bf="label" value="${(m.label || "").replace(/"/g, "&quot;")}" placeholder="${on ? "命中，填中文" : "可选"}" /></td>
+          <td><label class="fault-check"><input type="checkbox" data-bit="${idx}" data-bi="${i}" data-bf="fault" ${m.fault ? "checked" : ""} />故障</label></td>
+        </tr>
+      `);
+    }
+    return `
+      <div class="map-box">
+        <div class="readout">教学帧：${res.display} · bit0 是${ENDIAN_LABEL[endian]}拼好后的最低位 · 亮着的位优先填</div>
+        <table class="map-table">
+          <thead><tr><th>位</th><th>中文</th><th></th></tr></thead>
+          <tbody>${bitRows.join("")}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function onFieldChange(e) {
+    const el = e.target;
+    const i = Number(el.getAttribute("data-i"));
+    const f = el.getAttribute("data-f");
+    if (Number.isNaN(i) || !f) return;
+    rows[i][f] = el.value;
+    if (f === "read" || f === "endian") {
+      ensureBitMap(rows[i]);
+      render();
+      return;
+    }
+    renderBytes();
+    renderCards();
+    renderSummary();
+    renderJson();
+  }
+
+  function bindMapEditors() {
+    tbody.querySelectorAll("[data-add-enum]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.getAttribute("data-add-enum"));
+        const n = parseUint(teach().bytes, rows[i].start, rows[i].end, rows[i].endian || "be");
+        rows[i].enumMap.push({ value: n, label: "" });
+        render();
+      });
+    });
+    tbody.querySelectorAll("[data-enum-del]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.getAttribute("data-enum-del"));
+        const mi = Number(btn.getAttribute("data-mi"));
+        rows[i].enumMap.splice(mi, 1);
+        render();
+      });
+    });
+    tbody.querySelectorAll("[data-enum]").forEach((el) => {
+      el.addEventListener("input", () => {
+        const i = Number(el.getAttribute("data-enum"));
+        const mi = Number(el.getAttribute("data-mi"));
+        const ef = el.getAttribute("data-ef");
+        if (ef === "value") rows[i].enumMap[mi].value = Number(el.value);
+        else rows[i].enumMap[mi].label = el.value;
+        renderCards();
+        renderSummary();
+        renderJson();
+      });
+    });
+    tbody.querySelectorAll("[data-bit]").forEach((el) => {
+      const handler = () => {
+        const i = Number(el.getAttribute("data-bit"));
+        const bi = Number(el.getAttribute("data-bi"));
+        const bf = el.getAttribute("data-bf");
+        ensureBitMap(rows[i]);
+        if (bf === "fault") rows[i].bitMap[bi].fault = el.checked;
+        else rows[i].bitMap[bi].label = el.value;
+        renderBytes();
+        renderCards();
+        renderSummary();
+        renderJson();
+      };
+      el.addEventListener("input", handler);
+      el.addEventListener("change", handler);
+    });
+  }
+
+  function renderCards() {
+    renderCard(teachCard, teach(), "教学");
+    renderCard(verifyCard, verify(), "验证");
+  }
+
+  function renderSummary() {
+    if (!rows.length) {
+      summary.innerHTML = "<strong>还没有规则。</strong>先选教学帧，再把字节写进对照表。";
+      return;
+    }
+    const parts = rows.map((r) => {
+      const how = READ_LABEL[r.read];
+      const end = needsEndian(r) ? `（${ENDIAN_LABEL[r.endian || "be"]}）` : "";
+      return `「${r.name || "未命名"}」${how}${end}`;
+    });
+    summary.innerHTML = `<strong>规则认的是：</strong>${parts.join("；")}。下面验证帧（行 ${verify().ln}）已用同一套对照与端序重算——不是只认教学帧那一串字节。`;
+  }
+
+  function renderJson() {
+    jsonBox.textContent = JSON.stringify({
+      id: "demo-sheet-v2",
+      name: "设备状态（设计稿 v2）",
+      teach: teachId,
+      verify: verifyId,
+      fields: rows.map((r) => ({
+        bytes: hexOf(teach().bytes, r.start, r.end),
+        name: r.name,
+        read: READ_LABEL[r.read],
+        endian: needsEndian(r) ? ENDIAN_LABEL[r.endian || "be"] : undefined,
+        role: ROLE_LABEL[r.role],
+        enumMap: r.read === "dec" ? r.enumMap : undefined,
+        bitMap: r.read === "bits"
+          ? r.bitMap.map((b, i) => ({ bit: i, label: b.label, fault: b.fault })).filter((b) => b.label)
+          : undefined
+      }))
+    }, null, 2);
+  }
+
+  function render() {
+    renderLines();
+    renderBytes();
+    renderTable();
+    renderCards();
+    renderSummary();
+    renderJson();
+  }
+
+  document.getElementById("addRow").addEventListener("click", () => {
+    let range = pick;
+    if (!range) range = nextGap();
+    if (!range) return;
+    if (overlaps(range.start, range.end)) return;
+    const multi = range.end > range.start;
+    const row = {
+      start: range.start,
+      end: range.end,
+      name: "",
+      read: multi ? "bits" : "hex",
+      endian: multi ? draftEndian : "be",
+      role: "field",
+      enumMap: [],
+      bitMap: []
+    };
+    ensureBitMap(row);
+    rows.push(row);
+    rows.sort((a, b) => a.start - b.start);
+    active = rows.indexOf(row);
+    pick = null;
+    pickAnchor = null;
+    render();
+    const nameInput = tbody.querySelector(`input[data-i="${active}"][data-f="name"]`);
+    nameInput?.focus();
+  });
+
+  document.getElementById("clearSel").addEventListener("click", () => {
+    pick = null;
+    pickAnchor = null;
+    renderBytes();
+    updateAddEnabled();
+  });
+
+  document.getElementById("toggleJson").addEventListener("click", (e) => {
+    e.preventDefault();
+    jsonBox.classList.toggle("on");
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
