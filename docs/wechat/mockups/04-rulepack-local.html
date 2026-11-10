@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LogViewer · 规则库</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<link rel="stylesheet" href="./workbench.css" />
+</head>
+<body>
+  <div class="stage">
+    <header class="toolbar">
+      <div class="toolbar-side">
+        <span class="brand">LogViewer</span>
+        <span class="toolbtn">新建</span>
+        <span class="toolbtn">打开</span>
+        <span class="toolbtn">保存</span>
+        <span class="toolbtn">解析</span>
+      </div>
+      <div class="toolbar-side">
+        <span class="chip">规则 <strong>舱体温控示例</strong></span>
+      </div>
+    </header>
+    <div class="tabs"><div class="tab on">cabin-heat-0914.log</div></div>
+    <div class="dim">
+      <div class="settings-dialog" role="dialog" aria-label="设置">
+        <div class="settings-head">
+          <h2>设置</h2>
+          <div class="settings-search">搜索设置</div>
+        </div>
+        <div class="settings-layout">
+          <nav class="settings-nav">
+            <div class="settings-nav-btn">外观</div>
+            <div class="settings-nav-btn">编辑</div>
+            <div class="settings-nav-btn active">规则</div>
+            <div class="settings-nav-btn">快捷键</div>
+            <div class="settings-nav-btn">MCP</div>
+            <div class="settings-nav-btn">关于</div>
+          </nav>
+          <section class="settings-body">
+            <div class="settings-group">
+              <h3>规则库</h3>
+              <p class="settings-note">当前规则用于解析日志。改协议是换规则包，不是改阅读器。</p>
+              <div class="rule-manage-row">
+                <div>
+                  <div class="rule-manage-name">舱体温控示例 <span class="rule-manage-badge">当前</span></div>
+                </div>
+                <div class="rule-manage-ver">v1.0.0</div>
+              </div>
+              <div class="box">
+                <strong>导入 / 导出</strong>
+                <p>以加密的 .lvrule 分发。导入与导出使用同一口令，协议不明文躺在日志旁边。</p>
+              </div>
+              <div class="box">
+                <strong>本机规则包助手（MCP）</strong>
+                <p>本地 stdio 进程，供 Cursor 等客户端读取编写说明，并把校验过的规则加密成 .lvrule。不提供 HTTP 监听。</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+    <footer class="statusbar">
+      <span>第 4 行，第 1 列</span>
+      <span>cabin-heat-0914.log</span>
+      <span>解析分栏：关</span>
+      <div class="right"><span>12.5px</span><span>UTF-8</span><span>LF</span></div>
+    </footer>
+  </div>
+</body>
+</html>

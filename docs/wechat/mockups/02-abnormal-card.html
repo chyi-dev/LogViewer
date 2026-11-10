@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LogViewer · 异常解析卡片</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<link rel="stylesheet" href="./workbench.css" />
+</head>
+<body>
+  <div class="stage">
+    <header class="toolbar">
+      <div class="toolbar-side">
+        <span class="brand">LogViewer</span>
+        <span class="toolbtn">新建</span>
+        <span class="toolbtn">打开</span>
+        <span class="toolbtn">保存</span>
+        <span class="toolbtn on">解析</span>
+        <span class="toolbtn">更多</span>
+      </div>
+      <div class="toolbar-side">
+        <span class="toolbtn">查找</span>
+        <span class="chip">规则 <strong>舱体温控示例</strong></span>
+      </div>
+    </header>
+    <div class="tabs"><div class="tab on">cabin-heat-0914.log</div></div>
+    <div class="workspace">
+      <section class="editor">
+        <div class="log-line"><span class="ln">1</span><span>2026-11-09 09:13:58.401 Port:/dev/ttyS2 &gt; 5A A5 02 21 22</span></div>
+        <div class="log-line"><span class="ln">2</span><span>2026-11-09 09:13:58.612 Port:/dev/ttyS2 &lt; 5A A5 02 21 22</span></div>
+        <div class="log-line"><span class="ln">3</span><span>2026-11-09 09:14:01.905 Heartbeat ok</span></div>
+        <div class="log-line on"><span class="ln">4</span><span>2026-11-09 09:14:02.118 Port:/dev/ttyS2 &lt; 5A A5 06 21 02 03 00 00 2B</span></div>
+        <div class="log-line"><span class="ln">5</span><span>2026-11-09 09:14:02.340 Port:/dev/ttyS2 &gt; 5A A5 02 22 23</span></div>
+        <div class="log-line"><span class="ln">6</span><span>2026-11-09 09:14:05.002 RunInfo cabin idle</span></div>
+        <div class="log-line"><span class="ln">7</span><span>2026-11-09 09:18:41.002 Port:/dev/ttyS2 &lt; 5A A5 06 21 00 00 00 00 26</span></div>
+        <div class="log-line"><span class="ln">8</span><span>2026-11-09 09:18:41.220 Port:/dev/ttyS2 &gt; 5A A5 02 22 23</span></div>
+      </section>
+      <div class="h-split"></div>
+      <aside class="parse-pane">
+        <div class="parse-head">
+          <strong>解析</strong>
+          <div class="acts"><span>跟随：开</span><span>关闭</span></div>
+        </div>
+        <div class="byte-list">
+          <div class="parse-row">
+            <div class="parse-summary">
+              <span class="parse-no">L1</span>
+              <span class="parse-dir">发送</span>
+              <span class="parse-row-title">读取舱门状态</span>
+              <span class="parse-status"></span>
+            </div>
+          </div>
+          <div class="parse-row active fault open">
+            <div class="parse-summary">
+              <span class="parse-no">L4</span>
+              <span class="parse-dir">接收</span>
+              <span class="parse-row-title">读取舱门状态</span>
+              <span class="parse-status">异常</span>
+              <div class="parse-fault-line">门未关严 · 加热未就绪</div>
+            </div>
+            <div class="parse-expand">
+              <div class="parse-blocks">
+                <div class="parse-prop fault"><span>状态</span><b class="bad">异常</b></div>
+                <div class="parse-prop"><span>舱门与加热位图</span><b class="mono">03</b></div>
+                <div class="parse-prop fault"><span>故障</span><b class="bad">门未关严 · 加热未就绪</b></div>
+                <div class="parse-prop hex"><span>载荷</span><code>02 03 00 00</code></div>
+              </div>
+            </div>
+          </div>
+          <div class="parse-row">
+            <div class="parse-summary">
+              <span class="parse-no">L7</span>
+              <span class="parse-dir">接收</span>
+              <span class="parse-row-title">读取舱门状态</span>
+              <span class="parse-status">正常</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+    <footer class="statusbar">
+      <span>第 4 行，第 1 列</span>
+      <span>cabin-heat-0914.log</span>
+      <span>解析分栏：开</span>
+      <div class="right"><span>12.5px</span><span>UTF-8</span><span>LF</span></div>
+    </footer>
+  </div>
+</body>
+</html>

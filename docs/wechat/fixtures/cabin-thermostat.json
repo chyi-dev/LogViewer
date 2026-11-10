@@ -1,0 +1,100 @@
+{
+  "id": "cabin-thermostat-demo",
+  "name": "舱体温控示例",
+  "version": "1.0.0",
+  "presentation": "decoded",
+  "ai": {
+    "summary": "虚构舱体温控模块示意规则，仅用于宣传截图，不是在售设备协议。"
+  },
+  "filters": [
+    { "id": "all", "label": "全部" },
+    { "id": "tx", "label": "发送" },
+    { "id": "rx", "label": "接收" }
+  ],
+  "line_rules": [
+    {
+      "id": "port-arrow",
+      "pattern": "^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d+)\\s+Port:\\S+\\s+([><])\\s+([0-9A-Fa-f ]+)$",
+      "dir_group": 2,
+      "dir_map": { ">": "tx", "<": "rx" },
+      "hex_group": 3,
+      "time_group": 1
+    }
+  ],
+  "frame": {
+    "kind": "length_prefix",
+    "tx_header": [90, 165],
+    "rx_header": [90, 165],
+    "checksum": "sum8_before_last"
+  },
+  "commands": [
+    {
+      "cmd": 33,
+      "name": "CabinDoorStatusTx",
+      "title": "读取舱门状态",
+      "dir": "tx",
+      "len": 5
+    },
+    {
+      "cmd": 33,
+      "name": "CabinDoorStatusRx",
+      "title": "读取舱门状态",
+      "dir": "rx",
+      "len": 9,
+      "decode": [
+        {
+          "type": "uint",
+          "id": "st",
+          "offset": 0,
+          "width": 1,
+          "endian": "be",
+          "label": "状态码"
+        },
+        {
+          "type": "uint",
+          "id": "bitmap",
+          "offset": 1,
+          "width": 1,
+          "endian": "be",
+          "label": "舱门与加热位图"
+        },
+        {
+          "type": "bits",
+          "from": "st",
+          "start": 0,
+          "width": 2,
+          "id": "status",
+          "label": "status",
+          "map": {
+            "0": "正常",
+            "1": "忙碌",
+            "2": "异常",
+            "3": "错误"
+          }
+        },
+        {
+          "type": "flags",
+          "id": "faults",
+          "from": "bitmap",
+          "bits": [
+            { "bit": 0, "label": "门未关严", "fault": true },
+            { "bit": 1, "label": "加热未就绪", "fault": true }
+          ]
+        },
+        {
+          "type": "hex_dump",
+          "id": "payload",
+          "offset": 0,
+          "width": 4
+        }
+      ],
+      "view": [
+        { "type": "heading" },
+        { "type": "status", "bind": "status" },
+        { "type": "kv", "bind": "bitmap" },
+        { "type": "flags", "bind": "faults" },
+        { "type": "hex", "bind": "payload", "label": "载荷" }
+      ]
+    }
+  ]
+}

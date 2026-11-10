@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>LogViewer · 仅十六进制</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" />
+<link rel="stylesheet" href="./workbench.css" />
+</head>
+<body>
+  <div class="stage">
+    <header class="toolbar">
+      <div class="toolbar-side">
+        <span class="brand">LogViewer</span>
+        <span class="toolbtn">新建</span>
+        <span class="toolbtn">打开</span>
+        <span class="toolbtn">保存</span>
+        <span class="toolbtn">解析</span>
+        <span class="toolbtn">更多</span>
+      </div>
+      <div class="toolbar-side">
+        <span class="toolbtn">查找</span>
+        <span class="chip">规则 <strong>舱体温控示例</strong></span>
+      </div>
+    </header>
+    <div class="tabs"><div class="tab on">cabin-heat-0914.log</div></div>
+    <div class="workspace">
+      <section class="editor">
+        <div class="log-line"><span class="ln">1</span><span>2026-11-09 09:13:58.401 Port:/dev/ttyS2 &gt; 5A A5 02 21 22</span></div>
+        <div class="log-line"><span class="ln">2</span><span>2026-11-09 09:13:58.612 Port:/dev/ttyS2 &lt; 5A A5 02 21 22</span></div>
+        <div class="log-line"><span class="ln">3</span><span>2026-11-09 09:14:01.905 Heartbeat ok</span></div>
+        <div class="log-line on"><span class="ln">4</span><span>2026-11-09 09:14:02.118 Port:/dev/ttyS2 &lt; 5A A5 06 21 02 03 00 00 2B</span></div>
+        <div class="log-line"><span class="ln">5</span><span>2026-11-09 09:14:02.340 Port:/dev/ttyS2 &gt; 5A A5 02 22 23</span></div>
+        <div class="log-line"><span class="ln">6</span><span>2026-11-09 09:14:05.002 RunInfo cabin idle</span></div>
+        <div class="log-line"><span class="ln">7</span><span>2026-11-09 09:18:41.002 Port:/dev/ttyS2 &lt; 5A A5 06 21 00 00 00 00 26</span></div>
+        <div class="log-line"><span class="ln">8</span><span>2026-11-09 09:18:41.220 Port:/dev/ttyS2 &gt; 5A A5 02 22 23</span></div>
+      </section>
+    </div>
+    <footer class="statusbar">
+      <span>第 4 行，第 1 列</span>
+      <span>cabin-heat-0914.log</span>
+      <span>解析分栏：关</span>
+      <div class="right"><span>12.5px</span><span>UTF-8</span><span>LF</span></div>
+    </footer>
+  </div>
+</body>
+</html>
