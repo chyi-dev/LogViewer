@@ -34,6 +34,8 @@ export interface ViewportRange {
 
 export interface CodeEditorHandle {
   getText: () => string;
+  /** Text for any open tab id (active view or stored EditorState). */
+  getTextById: (id: string) => string;
   getSelection: () => { start: number; end: number };
   selectRange: (start: number, end: number) => void;
   gotoLine: (lineNo: number) => void;
@@ -52,7 +54,8 @@ export interface CodeEditorHandle {
   /** Screen Y of the top of a document line, or null if not measurable. */
   getLineScreenTop: (lineNo: number) => number | null;
   focus: () => void;
-  openDocument: (id: string, text: string) => void;
+  /** Optional restoreLine scrolls to that line the first time the doc is shown. */
+  openDocument: (id: string, text: string, restoreLine?: number) => void;
   closeDocument: (id: string) => void;
   switchDocument: (id: string) => void;
   hasDocument: (id: string) => boolean;
@@ -146,6 +149,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const viewRef = useRef<EditorView | null>(null);
     const statesRef = useRef(new Map<string, EditorState>());
     const scrollsRef = useRef(new Map<string, ScrollSnap>());
+    const restoreLinesRef = useRef(new Map<string, number>());
     const activeIdRef = useRef(activeId);
     const wrapRef = useRef(wrap);
     const lineRef = useRef(showLineNumbers);
@@ -303,6 +307,27 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       view.scrollDOM.scrollTop = snap.y;
     };
 
+    const applyPendingRestoreLine = (id: string) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const lineNo = restoreLinesRef.current.get(id);
+      if (lineNo == null) return;
+      restoreLinesRef.current.delete(id);
+      const line = view.state.doc.line(
+        Math.max(1, Math.min(lineNo, view.state.doc.lines)),
+      );
+      view.dispatch({
+        selection: { anchor: line.from },
+        effects: EditorView.scrollIntoView(line.from, { y: "start" }),
+      });
+      scrollsRef.current.set(id, {
+        x: view.scrollDOM.scrollLeft,
+        y: view.scrollDOM.scrollTop,
+      });
+      emitCaret(view.state);
+      emitViewport(view);
+    };
+
     useEffect(() => {
       if (!hostRef.current) return;
       const initial = makeState("");
@@ -320,6 +345,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         viewRef.current = null;
         statesRef.current.clear();
         scrollsRef.current.clear();
+        restoreLinesRef.current.clear();
       };
       // mount once; documents are managed via imperative API
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -353,7 +379,15 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       view.setState(next);
       applyViewOptions(view);
       statesRef.current.set(activeId, view.state);
-      requestAnimationFrame(() => restoreScroll(activeId));
+      requestAnimationFrame(() => {
+        if (restoreLinesRef.current.has(activeId)) {
+          applyPendingRestoreLine(activeId);
+        } else {
+          restoreScroll(activeId);
+        }
+        emitCaret(view.state);
+        emitViewport(view);
+      });
       emitCaret(view.state);
       docVersionRef.current += 1;
       callbacksRef.current.onDocVersion(docVersionRef.current);
@@ -361,6 +395,12 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
 
     useImperativeHandle(ref, () => ({
       getText: () => viewRef.current?.state.doc.toString() ?? "",
+      getTextById: (id) => {
+        if (activeIdRef.current === id && viewRef.current) {
+          return viewRef.current.state.doc.toString();
+        }
+        return statesRef.current.get(id)?.doc.toString() ?? "";
+      },
       getSelection: () => {
         const sel = viewRef.current?.state.selection.main;
         if (!sel) return { start: 0, end: 0 };
@@ -477,14 +517,26 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         return coords?.top ?? null;
       },
       focus: () => viewRef.current?.focus(),
-      openDocument: (id, text) => {
+      openDocument: (id, text, restoreLine) => {
         const state = makeState(text);
         statesRef.current.set(id, state);
         scrollsRef.current.set(id, { x: 0, y: 0 });
+        if (restoreLine != null && restoreLine > 1) {
+          restoreLinesRef.current.set(id, restoreLine);
+        } else {
+          restoreLinesRef.current.delete(id);
+        }
         const view = viewRef.current;
         if (view && activeIdRef.current === id) {
           view.setState(state);
-          emitCaret(view.state);
+          requestAnimationFrame(() => {
+            if (restoreLinesRef.current.has(id)) {
+              applyPendingRestoreLine(id);
+            } else {
+              emitCaret(view.state);
+              emitViewport(view);
+            }
+          });
           docVersionRef.current += 1;
           callbacksRef.current.onDocVersion(docVersionRef.current);
         }
@@ -492,6 +544,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       closeDocument: (id) => {
         statesRef.current.delete(id);
         scrollsRef.current.delete(id);
+        restoreLinesRef.current.delete(id);
       },
       switchDocument: (id) => {
         const view = viewRef.current;
@@ -513,7 +566,15 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           ),
         });
         statesRef.current.set(id, view.state);
-        requestAnimationFrame(() => restoreScroll(id));
+        requestAnimationFrame(() => {
+          if (restoreLinesRef.current.has(id)) {
+            applyPendingRestoreLine(id);
+          } else {
+            restoreScroll(id);
+          }
+          emitCaret(view.state);
+          emitViewport(view);
+        });
         emitCaret(view.state);
       },
       hasDocument: (id) => statesRef.current.has(id),

@@ -559,6 +559,21 @@ html, body, #root {
   font-size: 16px;
   font-weight: 560;
 }
+.dialog .dialog-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+.dialog .unsaved-list {
+  margin: 0 0 14px;
+  padding: 0 0 0 18px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.dialog .unsaved-list li {
+  margin: 4px 0;
+}
 .dialog .row {
   display: grid;
   grid-template-columns: 72px 1fr;

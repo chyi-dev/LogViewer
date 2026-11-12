@@ -18,13 +18,25 @@ import CodeEditor, { type CodeEditorHandle } from "./editor/CodeEditor";
 import { currentMatchIndex, type MatchHit } from "./editor/findEngine";
 import appreciateQr from "./assets/appreciate.jpg";
 import AppToolbar from "./shell/AppToolbar";
+import { isTauri } from "./shell/platform";
 import { formatShortcut, matchShortcut, usePrefs } from "./shell/prefs";
+import {
+  buildSession,
+  loadSession,
+  persistSession,
+} from "./shell/session";
 import SettingsDialog, { type SettingsSection } from "./shell/SettingsDialog";
 import { useAppearance } from "./theme/useAppearance";
 import "./styles/tokens.css";
 import "./styles/palettes.css";
 import "./styles/shell.css";
 import "./styles/workbench.css";
+
+type ClosePrompt = {
+  kind: "tab" | "window";
+  tabIds: string[];
+  closeTabId?: string;
+};
 
 const PARSE_MIN_BUFFER = 80;
 const PARSE_EDGE_MARGIN = 20;
@@ -205,6 +217,7 @@ export default function App() {
   const [openParseId, setOpenParseId] = useState<string | null>(null);
   const [selRange, setSelRange] = useState({ start: 0, end: 0 });
   const [docVersion, setDocVersion] = useState(0);
+  const [closePrompt, setClosePrompt] = useState<ClosePrompt | null>(null);
 
   const editorRef = useRef<CodeEditorHandle>(null);
   const parseTimer = useRef<number | null>(null);
@@ -225,6 +238,12 @@ export default function App() {
   const docsRef = useRef(docs);
   docsRef.current = docs;
   cacheRangeRef.current = cacheRange;
+  const viewportLinesRef = useRef(new Map<string, number>());
+  const restoringRef = useRef(false);
+  const allowCloseRef = useRef(false);
+  const sessionPersistTimer = useRef<number | null>(null);
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
 
   const active = docs.find((d) => d.id === activeId) ?? null;
 
@@ -232,10 +251,6 @@ export default function App() {
     setToast(msg);
     window.setTimeout(() => setToast(null), 3200);
   };
-
-  const updateActive = useCallback((mut: (t: DocTab) => DocTab) => {
-    setDocs((prev) => prev.map((d) => (d.id === activeIdRef.current ? mut(d) : d)));
-  }, []);
 
   const markDirty = useCallback((id: string) => {
     setDocs((prev) =>
@@ -369,9 +384,35 @@ export default function App() {
     list.scrollTo({ top: next, behavior: "smooth" });
   }, []);
 
+  const persistSessionNow = useCallback(() => {
+    if (restoringRef.current) return;
+    const activeTab = docsRef.current.find((d) => d.id === activeIdRef.current);
+    persistSession(
+      buildSession(
+        docsRef.current,
+        activeTab?.path || null,
+        viewportLinesRef.current,
+      ),
+    );
+  }, []);
+
+  const schedulePersistSession = useCallback(() => {
+    if (restoringRef.current) return;
+    if (sessionPersistTimer.current) window.clearTimeout(sessionPersistTimer.current);
+    sessionPersistTimer.current = window.setTimeout(() => {
+      sessionPersistTimer.current = null;
+      persistSessionNow();
+    }, 200);
+  }, [persistSessionNow]);
+
   const onViewportChange = useCallback(
     (range: ViewportRange) => {
       setVisibleRange(range);
+      const path = docsRef.current.find((d) => d.id === activeIdRef.current)?.path;
+      if (path) {
+        viewportLinesRef.current.set(path, range.fromLine);
+        schedulePersistSession();
+      }
       if (!parseOpen) return;
       const lineCount = editorRef.current?.getLineCount() ?? 1;
       if (cacheCovers(cacheRangeRef.current, range, lineCount)) return;
@@ -380,8 +421,12 @@ export default function App() {
         void runParseWindow(false);
       }, 80);
     },
-    [parseOpen, runParseWindow],
+    [parseOpen, runParseWindow, schedulePersistSession],
   );
+
+  useEffect(() => {
+    schedulePersistSession();
+  }, [docs, activeId, schedulePersistSession]);
 
   useEffect(() => {
     refreshRules();
@@ -485,76 +530,174 @@ export default function App() {
     setOpenParseId(null);
   };
 
-  const closeTab = (id: string) => {
-    const tab = docs.find((d) => d.id === id);
-    if (tab?.dirty && prefs.closeUnsaved === "ask" && !window.confirm(`关闭 ${tab.name}？未保存的更改将丢失。`)) return;
-    const idx = docs.findIndex((d) => d.id === id);
-    const next = docs.filter((d) => d.id !== id);
+  const performCloseTab = useCallback((id: string) => {
+    const current = docsRef.current;
+    const tab = current.find((d) => d.id === id);
+    if (tab?.path) viewportLinesRef.current.delete(tab.path);
+    const idx = current.findIndex((d) => d.id === id);
+    const next = current.filter((d) => d.id !== id);
     editorRef.current?.closeDocument(id);
     if (!next.length) {
       const empty = newEmptyTab();
       editorRef.current?.openDocument(empty.id, "");
+      docsRef.current = [empty];
       setDocs([empty]);
       setActiveId(empty.id);
       return;
     }
+    docsRef.current = next;
     setDocs(next);
-    if (id === activeId) setActiveId(next[Math.max(0, idx - 1)].id);
+    if (id === activeIdRef.current) {
+      setActiveId(next[Math.max(0, idx - 1)].id);
+    }
+  }, []);
+
+  const requestCloseTab = (id: string) => {
+    const tab = docsRef.current.find((d) => d.id === id);
+    if (tab?.dirty && prefsRef.current.closeUnsaved === "ask") {
+      setClosePrompt({ kind: "tab", tabIds: [id], closeTabId: id });
+      return;
+    }
+    performCloseTab(id);
   };
 
-  const openPathsFromShell = useCallback(async (paths: string[]) => {
-    for (const selectedPath of paths) {
-      if (!selectedPath) continue;
-      const existing = docsRef.current.find((d) => d.path === selectedPath);
-      if (existing) {
-        setActiveId(existing.id);
-        continue;
-      }
-      try {
-        const doc = await invoke<OpenedDocument>("open_document", { path: selectedPath });
-        if (doc.encoding_warning) showToast(doc.encoding_warning);
-        const tab = fromOpened(doc);
-        editorRef.current?.openDocument(tab.id, doc.text);
-        setDocs((prev) => {
+  const openPathsFromShell = useCallback(
+    async (
+      paths: string[],
+      options?: {
+        lines?: Map<string, number> | Record<string, number>;
+        activatePath?: string | null;
+      },
+    ) => {
+      let lastOpenedId: string | null = null;
+      let activateId: string | null = null;
+
+      for (const selectedPath of paths) {
+        if (!selectedPath) continue;
+        const existing = docsRef.current.find((d) => d.path === selectedPath);
+        if (existing) {
+          lastOpenedId = existing.id;
+          if (options?.activatePath === selectedPath) activateId = existing.id;
+          continue;
+        }
+        try {
+          const doc = await invoke<OpenedDocument>("open_document", {
+            path: selectedPath,
+          });
+          if (doc.encoding_warning) showToast(doc.encoding_warning);
+          const tab = fromOpened(doc);
+          const restoreLine =
+            options?.lines instanceof Map
+              ? options.lines.get(selectedPath)
+              : options?.lines?.[selectedPath];
+          if (restoreLine != null) {
+            viewportLinesRef.current.set(selectedPath, restoreLine);
+          }
+          editorRef.current?.openDocument(tab.id, doc.text, restoreLine);
+          const prev = docsRef.current;
           const aloneEmpty =
             prev.length === 1 &&
             !prev[0].path &&
             !prev[0].dirty &&
             prev[0].name === "未命名.txt";
+          let next: DocTab[];
           if (aloneEmpty) {
             editorRef.current?.closeDocument(prev[0].id);
-            return [tab];
+            next = [tab];
+          } else {
+            next = [...prev, tab];
           }
-          return [...prev, tab];
-        });
-        setActiveId(tab.id);
-      } catch (e) {
-        showToast(String(e));
+          docsRef.current = next;
+          setDocs(next);
+          lastOpenedId = tab.id;
+          if (options?.activatePath === selectedPath) activateId = tab.id;
+        } catch (e) {
+          showToast(String(e));
+        }
       }
-    }
-  }, []);
+
+      const nextActive = activateId ?? lastOpenedId;
+      if (nextActive) setActiveId(nextActive);
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
     (async () => {
+      restoringRef.current = true;
       try {
-        unlisten = await listen<string[]>("open-files", (ev) => {
-          void openPathsFromShell(ev.payload ?? []);
-        });
-        const pending = await invoke<string[]>("take_launch_files");
-        if (!cancelled && pending?.length) {
-          void openPathsFromShell(pending);
+        if (isTauri()) {
+          const session = loadSession();
+          if (!cancelled && session.files.length) {
+            const lines = Object.fromEntries(
+              session.files.map((f) => [f.path, f.line]),
+            );
+            await openPathsFromShell(
+              session.files.map((f) => f.path),
+              { lines, activatePath: session.activePath },
+            );
+          }
+          if (cancelled) return;
+          unlisten = await listen<string[]>("open-files", (ev) => {
+            void openPathsFromShell(ev.payload ?? []);
+          });
+          const pending = await invoke<string[]>("take_launch_files");
+          if (!cancelled && pending?.length) {
+            void openPathsFromShell(pending);
+          }
         }
       } catch (e) {
         if (!cancelled) showToast(String(e));
+      } finally {
+        restoringRef.current = false;
+        if (!cancelled) persistSessionNow();
       }
     })();
     return () => {
       cancelled = true;
       unlisten?.();
     };
-  }, [openPathsFromShell]);
+  }, [openPathsFromShell, persistSessionNow]);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      const onUnload = () => {
+        persistSessionNow();
+      };
+      window.addEventListener("beforeunload", onUnload);
+      return () => window.removeEventListener("beforeunload", onUnload);
+    }
+
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      unlisten = await win.onCloseRequested((event) => {
+        if (allowCloseRef.current) {
+          persistSessionNow();
+          return;
+        }
+        const dirty = docsRef.current.filter((d) => d.dirty);
+        if (!dirty.length || prefsRef.current.closeUnsaved === "discard") {
+          persistSessionNow();
+          return;
+        }
+        event.preventDefault();
+        setClosePrompt({
+          kind: "window",
+          tabIds: dirty.map((d) => d.id),
+        });
+      });
+      if (cancelled) unlisten?.();
+    })();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [persistSessionNow]);
 
   const openFile = async () => {
     const selectedPath = await open({
@@ -568,33 +711,86 @@ export default function App() {
     await openPathsFromShell([selectedPath]);
   };
 
-  const saveFile = async (saveAs = false) => {
-    if (!active) return;
-    let path = active.path;
+  const saveTabById = async (
+    id: string,
+    saveAs = false,
+  ): Promise<DocTab | null> => {
+    const tab = docsRef.current.find((d) => d.id === id);
+    if (!tab) return null;
+    let path = tab.path;
     if (saveAs || !path) {
       const picked = await save({
-        defaultPath: active.name,
+        defaultPath: tab.name,
         filters: [{ name: "Log / Text", extensions: [...LOG_FILE_EXTENSIONS] }],
       });
-      if (!picked) return;
+      if (!picked) return null;
+      if (tab.path && tab.path !== picked) {
+        const line = viewportLinesRef.current.get(tab.path);
+        viewportLinesRef.current.delete(tab.path);
+        if (line != null) viewportLinesRef.current.set(picked, line);
+      }
       path = picked;
     }
     try {
-      const text = editorRef.current?.getText() ?? "";
+      const text =
+        id === activeIdRef.current
+          ? (editorRef.current?.getText() ?? "")
+          : (editorRef.current?.getTextById(id) ?? "");
       await invoke("save_document", {
         path,
         text,
-        encoding: active.encoding,
-        lineEnding: active.lineEnding,
+        encoding: tab.encoding,
+        lineEnding: tab.lineEnding,
       });
-      updateActive((t) => ({
-        ...t,
+      const next: DocTab = {
+        ...tab,
         path,
-        name: path.split(/[/\\]/).pop() || t.name,
+        name: path.split(/[/\\]/).pop() || tab.name,
         dirty: false,
-      }));
+      };
+      const updated = docsRef.current.map((d) => (d.id === id ? next : d));
+      docsRef.current = updated;
+      setDocs(updated);
+      return next;
     } catch (e) {
       showToast(String(e));
+      return null;
+    }
+  };
+
+  const saveFile = async (saveAs = false) => {
+    if (!active) return;
+    await saveTabById(active.id, saveAs);
+  };
+
+  const finishWindowClose = async () => {
+    persistSessionNow();
+    allowCloseRef.current = true;
+    if (!isTauri()) return;
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().close();
+  };
+
+  const resolveClosePrompt = async (action: "save" | "discard" | "cancel") => {
+    if (!closePrompt) return;
+    const prompt = closePrompt;
+    if (action === "cancel") {
+      setClosePrompt(null);
+      return;
+    }
+    if (action === "save") {
+      for (const id of prompt.tabIds) {
+        const saved = await saveTabById(id);
+        if (!saved) return;
+      }
+    }
+    setClosePrompt(null);
+    if (prompt.kind === "tab" && prompt.closeTabId) {
+      performCloseTab(prompt.closeTabId);
+      return;
+    }
+    if (prompt.kind === "window") {
+      await finishWindowClose();
     }
   };
 
@@ -777,7 +973,7 @@ export default function App() {
           setDocs((p) => [...p, t]);
           setActiveId(t.id);
         } else if (command === "closeTab") {
-          if (activeId) closeTab(activeId);
+          if (activeId) requestCloseTab(activeId);
         } else if (command === "fontUp") bumpFont(FONT_SIZE_STEP);
         else if (command === "fontDown") bumpFont(-FONT_SIZE_STEP);
         else if (command === "fontReset") resetFont();
@@ -791,6 +987,10 @@ export default function App() {
         return;
       }
       if (ev.key === "Escape" && !ev.defaultPrevented) {
+        if (closePrompt) {
+          void resolveClosePrompt("cancel");
+          return;
+        }
         setFindMode(null);
         setGotoOpen(false);
         setPassOpen(null);
@@ -838,7 +1038,7 @@ export default function App() {
           void saveFile(true);
         }}
         onCloseTab={() => {
-          if (activeId) closeTab(activeId);
+          if (activeId) requestCloseTab(activeId);
         }}
         onFind={() => openFind("find")}
         onReplace={() => openFind("replace")}
@@ -878,7 +1078,7 @@ export default function App() {
               className="x"
               onClick={(e) => {
                 e.stopPropagation();
-                closeTab(d.id);
+                requestCloseTab(d.id);
               }}
             >
               ×
@@ -1111,6 +1311,38 @@ export default function App() {
         onClose={() => setFindMode(null)}
         onToast={showToast}
       />
+
+      <div className={`dialog${closePrompt ? " show" : ""}`}>
+        <h2>未保存的更改</h2>
+        <p className="dialog-note">
+          {closePrompt?.kind === "window"
+            ? "关闭应用前，下列文件还有未保存的更改："
+            : "关闭前，下列文件还有未保存的更改："}
+        </p>
+        <ul className="unsaved-list">
+          {(closePrompt?.tabIds ?? [])
+            .map((id) => docs.find((d) => d.id === id))
+            .filter((d): d is DocTab => !!d)
+            .map((d) => (
+              <li key={d.id}>{d.name}</li>
+            ))}
+        </ul>
+        <div className="actions">
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void resolveClosePrompt("save")}
+          >
+            保存
+          </button>
+          <button type="button" onClick={() => void resolveClosePrompt("discard")}>
+            不保存并关闭
+          </button>
+          <button type="button" onClick={() => void resolveClosePrompt("cancel")}>
+            取消
+          </button>
+        </div>
+      </div>
 
       <div className={`dialog${gotoOpen ? " show" : ""}`}>
         <h2>转到</h2>
