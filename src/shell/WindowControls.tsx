@@ -55,7 +55,7 @@ export function WindowControls() {
       >
         {maximized ? <IconRestore /> : <IconSquare />}
       </button>
-      <button type="button" className="window-btn window-btn-close" title="关闭" aria-label="关闭" onClick={() => run("close")}>
+      <button type="button" className="window-btn window-btn-close" title="隐藏到通知区域" aria-label="隐藏到通知区域" onClick={() => run("close")}>
         <IconX />
       </button>
     </div>

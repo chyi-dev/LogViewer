@@ -39,7 +39,7 @@ import "./styles/shell.css";
 import "./styles/workbench.css";
 
 type ClosePrompt = {
-  kind: "tab" | "window";
+  kind: "tab" | "hide" | "quit";
   tabIds: string[];
   closeTabId?: string;
 };
@@ -885,6 +885,36 @@ export default function App() {
     };
   }, [openPathsFromShell, persistSessionNow]);
 
+  const hideToTray = useCallback(async () => {
+    persistSessionNow();
+    if (!isTauri()) return;
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().hide();
+  }, [persistSessionNow]);
+
+  const requestQuit = useCallback(async () => {
+    const dirty = docsRef.current.filter((d) => d.dirty);
+    if (!dirty.length || prefsRef.current.closeUnsaved === "discard") {
+      persistSessionNow();
+      allowCloseRef.current = true;
+      if (!isTauri()) return;
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      await getCurrentWindow().destroy();
+      return;
+    }
+    if (isTauri()) {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      await win.show();
+      await win.unminimize();
+      await win.setFocus();
+    }
+    setClosePrompt({
+      kind: "quit",
+      tabIds: dirty.map((d) => d.id),
+    });
+  }, [persistSessionNow]);
+
   useEffect(() => {
     if (!isTauri()) {
       const onUnload = () => {
@@ -895,33 +925,41 @@ export default function App() {
     }
 
     let cancelled = false;
-    let unlisten: (() => void) | undefined;
+    let unlistenClose: (() => void) | undefined;
+    let unlistenQuit: (() => void) | undefined;
     void (async () => {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const win = getCurrentWindow();
-      unlisten = await win.onCloseRequested((event) => {
+      unlistenClose = await win.onCloseRequested((event) => {
         if (allowCloseRef.current) {
           persistSessionNow();
           return;
         }
+        event.preventDefault();
         const dirty = docsRef.current.filter((d) => d.dirty);
         if (!dirty.length || prefsRef.current.closeUnsaved === "discard") {
-          persistSessionNow();
+          void hideToTray();
           return;
         }
-        event.preventDefault();
         setClosePrompt({
-          kind: "window",
+          kind: "hide",
           tabIds: dirty.map((d) => d.id),
         });
       });
-      if (cancelled) unlisten?.();
+      unlistenQuit = await listen("tray-quit", () => {
+        void requestQuit();
+      });
+      if (cancelled) {
+        unlistenClose?.();
+        unlistenQuit?.();
+      }
     })();
     return () => {
       cancelled = true;
-      unlisten?.();
+      unlistenClose?.();
+      unlistenQuit?.();
     };
-  }, [persistSessionNow]);
+  }, [hideToTray, persistSessionNow, requestQuit]);
 
   const openFile = async () => {
     const selectedPath = await open({
@@ -1014,7 +1052,11 @@ export default function App() {
       performCloseTab(prompt.closeTabId);
       return;
     }
-    if (prompt.kind === "window") {
+    if (prompt.kind === "hide") {
+      await hideToTray();
+      return;
+    }
+    if (prompt.kind === "quit") {
       await finishWindowClose();
     }
   };
@@ -1582,9 +1624,11 @@ export default function App() {
           >
             <h2 id="unsaved-title">未保存的更改</h2>
             <p className="dialog-note">
-              {closePrompt.kind === "window"
+              {closePrompt.kind === "quit"
                 ? "关闭应用前，下列文件还有未保存的更改："
-                : "关闭前，下列文件还有未保存的更改："}
+                : closePrompt.kind === "hide"
+                  ? "退到通知区域前，下列文件还有未保存的更改："
+                  : "关闭前，下列文件还有未保存的更改："}
             </p>
             <ul className="unsaved-list">
               {closePrompt.tabIds

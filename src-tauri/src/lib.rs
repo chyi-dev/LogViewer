@@ -15,12 +15,17 @@ use commands::{
 };
 use launch::{dedupe_paths, parse_launch_args, LaunchAction};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager,
+};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use tauri::RunEvent;
 
 fn focus_main(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
@@ -89,6 +94,36 @@ pub fn run() {
                 let _ = window.set_decorations(false);
                 let _ = window.set_shadow(true);
             }
+
+            let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let tray_builder = TrayIconBuilder::new()
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .tooltip("LogViewer")
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => focus_main(app),
+                    "quit" => {
+                        let _ = app.emit("tray-quit", ());
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        focus_main(tray.app_handle());
+                    }
+                });
+            let tray_builder = match app.default_window_icon() {
+                Some(icon) => tray_builder.icon(icon.clone()),
+                None => tray_builder,
+            };
+            tray_builder.build(app)?;
 
             Ok(())
         })
