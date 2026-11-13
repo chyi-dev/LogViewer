@@ -32,6 +32,12 @@ export interface ViewportRange {
   toLine: number;
 }
 
+export type DocumentRestore = {
+  line?: number;
+  scrollTop?: number;
+  scrollLeft?: number;
+};
+
 export interface CodeEditorHandle {
   getText: () => string;
   /** Text for any open tab id (active view or stored EditorState). */
@@ -50,12 +56,13 @@ export interface CodeEditorHandle {
   getDocLength: () => number;
   getLineCount: () => number;
   getViewport: () => ViewportRange;
+  getScroll: () => { scrollTop: number; scrollLeft: number };
   getLines: (fromLine: number, toLine: number) => { line: number; text: string }[];
   /** Screen Y of the top of a document line, or null if not measurable. */
   getLineScreenTop: (lineNo: number) => number | null;
   focus: () => void;
-  /** Optional restoreLine scrolls to that line the first time the doc is shown. */
-  openDocument: (id: string, text: string, restoreLine?: number) => void;
+  /** Optional restore scrolls to that position the first time the doc is shown. */
+  openDocument: (id: string, text: string, restore?: DocumentRestore | number) => void;
   closeDocument: (id: string) => void;
   switchDocument: (id: string) => void;
   hasDocument: (id: string) => boolean;
@@ -77,6 +84,33 @@ export interface CodeEditorProps {
 }
 
 type ScrollSnap = { x: number; y: number };
+
+function normalizeRestore(
+  restore?: DocumentRestore | number,
+): DocumentRestore | null {
+  if (restore == null) return null;
+  if (typeof restore === "number") {
+    return restore > 1 ? { line: restore } : null;
+  }
+  const line = restore.line;
+  const scrollTop = restore.scrollTop;
+  const scrollLeft = restore.scrollLeft;
+  const hasScroll =
+    (scrollTop != null && scrollTop > 0) || (scrollLeft != null && scrollLeft > 0);
+  const hasLine = line != null && line > 1;
+  if (!hasScroll && !hasLine) return null;
+  return {
+    line: hasLine ? line : undefined,
+    scrollTop: scrollTop != null && scrollTop > 0 ? scrollTop : undefined,
+    scrollLeft: scrollLeft != null && scrollLeft > 0 ? scrollLeft : undefined,
+  };
+}
+
+function afterLayout(run: () => void) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(run);
+  });
+}
 
 function buildTheme(): Extension {
   return EditorView.theme({
@@ -149,7 +183,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     const viewRef = useRef<EditorView | null>(null);
     const statesRef = useRef(new Map<string, EditorState>());
     const scrollsRef = useRef(new Map<string, ScrollSnap>());
-    const restoreLinesRef = useRef(new Map<string, number>());
+    const restoreRef = useRef(new Map<string, DocumentRestore>());
     const activeIdRef = useRef(activeId);
     const wrapRef = useRef(wrap);
     const lineRef = useRef(showLineNumbers);
@@ -307,12 +341,31 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       view.scrollDOM.scrollTop = snap.y;
     };
 
-    const applyPendingRestoreLine = (id: string) => {
+    const applyPendingRestore = (id: string) => {
       const view = viewRef.current;
       if (!view) return;
-      const lineNo = restoreLinesRef.current.get(id);
+      const restore = restoreRef.current.get(id);
+      if (!restore) return;
+      restoreRef.current.delete(id);
+
+      const hasScroll =
+        (restore.scrollTop != null && restore.scrollTop > 0) ||
+        (restore.scrollLeft != null && restore.scrollLeft > 0);
+
+      if (hasScroll) {
+        view.scrollDOM.scrollTop = restore.scrollTop ?? 0;
+        view.scrollDOM.scrollLeft = restore.scrollLeft ?? 0;
+        scrollsRef.current.set(id, {
+          x: view.scrollDOM.scrollLeft,
+          y: view.scrollDOM.scrollTop,
+        });
+        emitCaret(view.state);
+        emitViewport(view);
+        return;
+      }
+
+      const lineNo = restore.line;
       if (lineNo == null) return;
-      restoreLinesRef.current.delete(id);
       const line = view.state.doc.line(
         Math.max(1, Math.min(lineNo, view.state.doc.lines)),
       );
@@ -345,7 +398,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         viewRef.current = null;
         statesRef.current.clear();
         scrollsRef.current.clear();
-        restoreLinesRef.current.clear();
+        restoreRef.current.clear();
       };
       // mount once; documents are managed via imperative API
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -379,14 +432,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       view.setState(next);
       applyViewOptions(view);
       statesRef.current.set(activeId, view.state);
-      requestAnimationFrame(() => {
-        if (restoreLinesRef.current.has(activeId)) {
-          applyPendingRestoreLine(activeId);
+      afterLayout(() => {
+        if (restoreRef.current.has(activeId)) {
+          applyPendingRestore(activeId);
         } else {
           restoreScroll(activeId);
+          emitCaret(view.state);
+          emitViewport(view);
         }
-        emitCaret(view.state);
-        emitViewport(view);
       });
       emitCaret(view.state);
       docVersionRef.current += 1;
@@ -496,6 +549,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         if (!view) return { fromLine: 1, toLine: 1 };
         return readViewport(view);
       },
+      getScroll: () => {
+        const view = viewRef.current;
+        if (!view) return { scrollTop: 0, scrollLeft: 0 };
+        return {
+          scrollTop: view.scrollDOM.scrollTop,
+          scrollLeft: view.scrollDOM.scrollLeft,
+        };
+      },
       getLines: (fromLine, toLine) => {
         const view = viewRef.current;
         if (!view) return [];
@@ -517,21 +578,26 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
         return coords?.top ?? null;
       },
       focus: () => viewRef.current?.focus(),
-      openDocument: (id, text, restoreLine) => {
+      openDocument: (id, text, restore) => {
         const state = makeState(text);
         statesRef.current.set(id, state);
-        scrollsRef.current.set(id, { x: 0, y: 0 });
-        if (restoreLine != null && restoreLine > 1) {
-          restoreLinesRef.current.set(id, restoreLine);
+        const pending = normalizeRestore(restore);
+        if (pending) {
+          restoreRef.current.set(id, pending);
+          scrollsRef.current.set(id, {
+            x: pending.scrollLeft ?? 0,
+            y: pending.scrollTop ?? 0,
+          });
         } else {
-          restoreLinesRef.current.delete(id);
+          restoreRef.current.delete(id);
+          scrollsRef.current.set(id, { x: 0, y: 0 });
         }
         const view = viewRef.current;
         if (view && activeIdRef.current === id) {
           view.setState(state);
-          requestAnimationFrame(() => {
-            if (restoreLinesRef.current.has(id)) {
-              applyPendingRestoreLine(id);
+          afterLayout(() => {
+            if (restoreRef.current.has(id)) {
+              applyPendingRestore(id);
             } else {
               emitCaret(view.state);
               emitViewport(view);
@@ -544,7 +610,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
       closeDocument: (id) => {
         statesRef.current.delete(id);
         scrollsRef.current.delete(id);
-        restoreLinesRef.current.delete(id);
+        restoreRef.current.delete(id);
       },
       switchDocument: (id) => {
         const view = viewRef.current;
@@ -566,14 +632,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           ),
         });
         statesRef.current.set(id, view.state);
-        requestAnimationFrame(() => {
-          if (restoreLinesRef.current.has(id)) {
-            applyPendingRestoreLine(id);
+        afterLayout(() => {
+          if (restoreRef.current.has(id)) {
+            applyPendingRestore(id);
           } else {
             restoreScroll(id);
+            emitCaret(view.state);
+            emitViewport(view);
           }
-          emitCaret(view.state);
-          emitViewport(view);
         });
         emitCaret(view.state);
       },

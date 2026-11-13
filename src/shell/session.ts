@@ -1,8 +1,16 @@
 export const SESSION_KEY = "logviewer.session";
 
+export interface ViewportSnap {
+  line: number;
+  scrollTop: number;
+  scrollLeft: number;
+}
+
 export interface SessionFile {
   path: string;
   line: number;
+  scrollTop?: number;
+  scrollLeft?: number;
 }
 
 export interface AppSession {
@@ -18,6 +26,27 @@ export function emptySession(): AppSession {
 function clampLine(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return 1;
   return Math.max(1, Math.floor(value));
+}
+
+function clampScroll(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Math.max(0, value);
+}
+
+export function normalizeViewportSnap(
+  value: Partial<ViewportSnap> | number | null | undefined,
+): ViewportSnap {
+  if (typeof value === "number") {
+    return { line: clampLine(value), scrollTop: 0, scrollLeft: 0 };
+  }
+  if (!value || typeof value !== "object") {
+    return { line: 1, scrollTop: 0, scrollLeft: 0 };
+  }
+  return {
+    line: clampLine(value.line),
+    scrollTop: clampScroll(value.scrollTop),
+    scrollLeft: clampScroll(value.scrollLeft),
+  };
 }
 
 export function normalizeSession(value: unknown): AppSession {
@@ -36,7 +65,17 @@ export function normalizeSession(value: unknown): AppSession {
     const path = entry.path;
     if (seen.has(path)) continue;
     seen.add(path);
-    files.push({ path, line: clampLine(entry.line) });
+    const snap = normalizeViewportSnap({
+      line: entry.line as number,
+      scrollTop: entry.scrollTop as number | undefined,
+      scrollLeft: entry.scrollLeft as number | undefined,
+    });
+    files.push({
+      path,
+      line: snap.line,
+      scrollTop: snap.scrollTop,
+      scrollLeft: snap.scrollLeft,
+    });
   }
 
   let activePath: string | null = null;
@@ -69,21 +108,32 @@ export function persistSession(session: AppSession) {
   }
 }
 
+export type ViewportSnapMap =
+  | Map<string, ViewportSnap | number>
+  | Record<string, ViewportSnap | number>;
+
+function snapOf(map: ViewportSnapMap, path: string): ViewportSnap {
+  if (map instanceof Map) return normalizeViewportSnap(map.get(path));
+  return normalizeViewportSnap(map[path]);
+}
+
 export function buildSession(
   tabs: { path: string }[],
   activePath: string | null | undefined,
-  lines: Map<string, number> | Record<string, number>,
+  viewports: ViewportSnapMap,
 ): AppSession {
-  const lineOf = (path: string): number => {
-    if (lines instanceof Map) return clampLine(lines.get(path) ?? 1);
-    return clampLine(lines[path] ?? 1);
-  };
   const files: SessionFile[] = [];
   const seen = new Set<string>();
   for (const tab of tabs) {
     if (!tab.path || seen.has(tab.path)) continue;
     seen.add(tab.path);
-    files.push({ path: tab.path, line: lineOf(tab.path) });
+    const snap = snapOf(viewports, tab.path);
+    files.push({
+      path: tab.path,
+      line: snap.line,
+      scrollTop: snap.scrollTop,
+      scrollLeft: snap.scrollLeft,
+    });
   }
   const nextActive =
     activePath && files.some((f) => f.path === activePath)

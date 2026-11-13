@@ -93,7 +93,6 @@ export default function SettingsDialog({
   onAppreciate,
 }: SettingsDialogProps) {
   const titleId = useId();
-  const searchRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<SettingsSection>(section);
   const [query, setQuery] = useState("");
 
@@ -108,15 +107,11 @@ export default function SettingsDialog({
 
   useEffect(() => {
     if (!open) return;
-    const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !event.defaultPrevented) onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("keydown", onKey);
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
   const visibleTabs = useMemo(() => {
@@ -149,7 +144,6 @@ export default function SettingsDialog({
         <header className="settings-head">
           <h2 id={titleId}>设置</h2>
           <input
-            ref={searchRef}
             className="settings-search"
             value={query}
             placeholder="搜索设置"

@@ -20,7 +20,10 @@ import type {
 import FindReplaceDialog, {
   type FindReplaceHandle,
 } from "./dialogs/FindReplaceDialog";
-import CodeEditor, { type CodeEditorHandle } from "./editor/CodeEditor";
+import CodeEditor, {
+  type CodeEditorHandle,
+  type DocumentRestore,
+} from "./editor/CodeEditor";
 import { currentMatchIndex, type MatchHit } from "./editor/findEngine";
 import appreciateQr from "./assets/appreciate.jpg";
 import AppToolbar from "./shell/AppToolbar";
@@ -29,7 +32,9 @@ import { formatShortcut, matchShortcut, usePrefs } from "./shell/prefs";
 import {
   buildSession,
   loadSession,
+  normalizeViewportSnap,
   persistSession,
+  type ViewportSnap,
 } from "./shell/session";
 import SettingsDialog, { type SettingsSection } from "./shell/SettingsDialog";
 import { useAppearance } from "./theme/useAppearance";
@@ -254,7 +259,7 @@ export default function App() {
   const docsRef = useRef(docs);
   docsRef.current = docs;
   cacheRangeRef.current = cacheRange;
-  const viewportLinesRef = useRef(new Map<string, number>());
+  const viewportSnapsRef = useRef(new Map<string, ViewportSnap>());
   const restoringRef = useRef(false);
   const allowCloseRef = useRef(false);
   const sessionPersistTimer = useRef<number | null>(null);
@@ -413,6 +418,19 @@ export default function App() {
     list.scrollTo({ top: next, behavior: "smooth" });
   }, []);
 
+  const flushViewportFromEditor = useCallback(() => {
+    const path = docsRef.current.find((d) => d.id === activeIdRef.current)?.path;
+    const ed = editorRef.current;
+    if (!path || !ed) return;
+    const viewport = ed.getViewport();
+    const scroll = ed.getScroll();
+    viewportSnapsRef.current.set(path, {
+      line: viewport.fromLine,
+      scrollTop: scroll.scrollTop,
+      scrollLeft: scroll.scrollLeft,
+    });
+  }, []);
+
   const persistSessionNow = useCallback(() => {
     if (restoringRef.current) return;
     const activeTab = docsRef.current.find((d) => d.id === activeIdRef.current);
@@ -420,7 +438,7 @@ export default function App() {
       buildSession(
         docsRef.current,
         activeTab?.path || null,
-        viewportLinesRef.current,
+        viewportSnapsRef.current,
       ),
     );
   }, []);
@@ -439,7 +457,15 @@ export default function App() {
       setVisibleRange(range);
       const path = docsRef.current.find((d) => d.id === activeIdRef.current)?.path;
       if (path) {
-        viewportLinesRef.current.set(path, range.fromLine);
+        const scroll = editorRef.current?.getScroll() ?? {
+          scrollTop: 0,
+          scrollLeft: 0,
+        };
+        viewportSnapsRef.current.set(path, {
+          line: range.fromLine,
+          scrollTop: scroll.scrollTop,
+          scrollLeft: scroll.scrollLeft,
+        });
         schedulePersistSession();
       }
       if (!parseOpen) return;
@@ -757,7 +783,7 @@ export default function App() {
   const performCloseTab = useCallback((id: string) => {
     const current = docsRef.current;
     const tab = current.find((d) => d.id === id);
-    if (tab?.path) viewportLinesRef.current.delete(tab.path);
+    if (tab?.path) viewportSnapsRef.current.delete(tab.path);
     const idx = current.findIndex((d) => d.id === id);
     const next = current.filter((d) => d.id !== id);
     editorRef.current?.closeDocument(id);
@@ -789,7 +815,7 @@ export default function App() {
     async (
       paths: string[],
       options?: {
-        lines?: Map<string, number> | Record<string, number>;
+        viewports?: Map<string, ViewportSnap> | Record<string, ViewportSnap>;
         activatePath?: string | null;
       },
     ) => {
@@ -810,14 +836,22 @@ export default function App() {
           });
           if (doc.encoding_warning) showToast(doc.encoding_warning);
           const tab = fromOpened(doc);
-          const restoreLine =
-            options?.lines instanceof Map
-              ? options.lines.get(selectedPath)
-              : options?.lines?.[selectedPath];
-          if (restoreLine != null) {
-            viewportLinesRef.current.set(selectedPath, restoreLine);
+          const rawSnap =
+            options?.viewports instanceof Map
+              ? options.viewports.get(selectedPath)
+              : options?.viewports?.[selectedPath];
+          const snap = rawSnap ? normalizeViewportSnap(rawSnap) : null;
+          const restore: DocumentRestore | undefined = snap
+            ? {
+                line: snap.line,
+                scrollTop: snap.scrollTop,
+                scrollLeft: snap.scrollLeft,
+              }
+            : undefined;
+          if (snap) {
+            viewportSnapsRef.current.set(selectedPath, snap);
           }
-          editorRef.current?.openDocument(tab.id, doc.text, restoreLine);
+          editorRef.current?.openDocument(tab.id, doc.text, restore);
           const prev = docsRef.current;
           const aloneEmpty =
             prev.length === 1 &&
@@ -855,12 +889,19 @@ export default function App() {
         if (isTauri()) {
           const session = loadSession();
           if (!cancelled && session.files.length) {
-            const lines = Object.fromEntries(
-              session.files.map((f) => [f.path, f.line]),
+            const viewports = Object.fromEntries(
+              session.files.map((f) => [
+                f.path,
+                normalizeViewportSnap({
+                  line: f.line,
+                  scrollTop: f.scrollTop,
+                  scrollLeft: f.scrollLeft,
+                }),
+              ]),
             );
             await openPathsFromShell(
               session.files.map((f) => f.path),
-              { lines, activatePath: session.activePath },
+              { viewports, activatePath: session.activePath },
             );
           }
           if (cancelled) return;
@@ -886,15 +927,17 @@ export default function App() {
   }, [openPathsFromShell, persistSessionNow]);
 
   const hideToTray = useCallback(async () => {
+    flushViewportFromEditor();
     persistSessionNow();
     if (!isTauri()) return;
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     await getCurrentWindow().hide();
-  }, [persistSessionNow]);
+  }, [flushViewportFromEditor, persistSessionNow]);
 
   const requestQuit = useCallback(async () => {
     const dirty = docsRef.current.filter((d) => d.dirty);
     if (!dirty.length || prefsRef.current.closeUnsaved === "discard") {
+      flushViewportFromEditor();
       persistSessionNow();
       allowCloseRef.current = true;
       if (!isTauri()) return;
@@ -913,11 +956,12 @@ export default function App() {
       kind: "quit",
       tabIds: dirty.map((d) => d.id),
     });
-  }, [persistSessionNow]);
+  }, [flushViewportFromEditor, persistSessionNow]);
 
   useEffect(() => {
     if (!isTauri()) {
       const onUnload = () => {
+        flushViewportFromEditor();
         persistSessionNow();
       };
       window.addEventListener("beforeunload", onUnload);
@@ -932,6 +976,7 @@ export default function App() {
       const win = getCurrentWindow();
       unlistenClose = await win.onCloseRequested((event) => {
         if (allowCloseRef.current) {
+          flushViewportFromEditor();
           persistSessionNow();
           return;
         }
@@ -959,7 +1004,7 @@ export default function App() {
       unlistenClose?.();
       unlistenQuit?.();
     };
-  }, [hideToTray, persistSessionNow, requestQuit]);
+  }, [flushViewportFromEditor, hideToTray, persistSessionNow, requestQuit]);
 
   const openFile = async () => {
     const selectedPath = await open({
@@ -987,9 +1032,9 @@ export default function App() {
       });
       if (!picked) return null;
       if (tab.path && tab.path !== picked) {
-        const line = viewportLinesRef.current.get(tab.path);
-        viewportLinesRef.current.delete(tab.path);
-        if (line != null) viewportLinesRef.current.set(picked, line);
+        const snap = viewportSnapsRef.current.get(tab.path);
+        viewportSnapsRef.current.delete(tab.path);
+        if (snap) viewportSnapsRef.current.set(picked, snap);
       }
       path = picked;
     }
@@ -1026,6 +1071,7 @@ export default function App() {
   };
 
   const finishWindowClose = async () => {
+    flushViewportFromEditor();
     persistSessionNow();
     allowCloseRef.current = true;
     if (!isTauri()) return;
