@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -41,6 +47,14 @@ type ClosePrompt = {
 const PARSE_MIN_BUFFER = 80;
 const PARSE_EDGE_MARGIN = 20;
 const LOG_FILE_EXTENSIONS = ["txt", "log", "alog", "xlog", "logs"];
+const TAB_DRAG_THRESHOLD = 5;
+const TAB_AUTO_SCROLL_EDGE = 36;
+const TAB_AUTO_SCROLL_SPEED = 14;
+
+type TabDragVisual = {
+  id: string;
+  insertSlot: number;
+};
 
 function cacheWindow(
   visible: ViewportRange,
@@ -218,6 +232,7 @@ export default function App() {
   const [selRange, setSelRange] = useState({ start: 0, end: 0 });
   const [docVersion, setDocVersion] = useState(0);
   const [closePrompt, setClosePrompt] = useState<ClosePrompt | null>(null);
+  const [tabDrag, setTabDrag] = useState<TabDragVisual | null>(null);
 
   const editorRef = useRef<CodeEditorHandle>(null);
   const parseTimer = useRef<number | null>(null);
@@ -230,6 +245,7 @@ export default function App() {
   const findRef = useRef<FindReplaceHandle>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
   const editorStackRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
   const vSplitDragging = useRef(false);
   const hSplitDragging = useRef(false);
   const initialDocReady = useRef(false);
@@ -244,6 +260,19 @@ export default function App() {
   const sessionPersistTimer = useRef<number | null>(null);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
+  const tabDragSession = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastY: number;
+    dragging: boolean;
+    insertSlot: number;
+    fromIndex: number;
+  } | null>(null);
+  const tabDragSuppressClick = useRef(false);
+  const tabAutoScrollRaf = useRef<number | null>(null);
+  const tabAutoScrollDir = useRef(0);
 
   const active = docs.find((d) => d.id === activeId) ?? null;
 
@@ -520,15 +549,210 @@ export default function App() {
     editorRef.current?.redo();
   };
 
-  const switchTab = (id: string) => {
-    if (id === activeId) return;
+  const switchTab = useCallback((id: string) => {
+    if (id === activeIdRef.current) return;
     setActiveId(id);
     setEvents([]);
     setCacheRange(null);
     cacheRangeRef.current = null;
     setSelectedParseLine(null);
     setOpenParseId(null);
-  };
+  }, []);
+
+  const stopTabAutoScroll = useCallback(() => {
+    tabAutoScrollDir.current = 0;
+    if (tabAutoScrollRaf.current != null) {
+      window.cancelAnimationFrame(tabAutoScrollRaf.current);
+      tabAutoScrollRaf.current = null;
+    }
+  }, []);
+
+  const computeTabInsertSlot = useCallback((clientX: number, clientY: number) => {
+    const root = tabsRef.current;
+    if (!root) return 0;
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>(".tab"));
+    if (!nodes.length) return 0;
+
+    type TabHit = { index: number; rect: DOMRect; dist: number };
+    const hits: TabHit[] = nodes.map((el, index) => {
+      const rect = el.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      return {
+        index,
+        rect,
+        dist: (clientX - cx) ** 2 + (clientY - cy) ** 2,
+      };
+    });
+
+    const onRow = hits.filter(
+      ({ rect }) => clientY >= rect.top - 4 && clientY <= rect.bottom + 4,
+    );
+    const pool = onRow.length ? onRow : [hits.reduce((a, b) => (a.dist <= b.dist ? a : b))];
+    pool.sort((a, b) => a.rect.left - b.rect.left || a.index - b.index);
+
+    let insertSlot = nodes.length;
+    for (const hit of pool) {
+      if (clientX < hit.rect.left + hit.rect.width / 2) {
+        insertSlot = hit.index;
+        break;
+      }
+      insertSlot = hit.index + 1;
+    }
+    return insertSlot;
+  }, []);
+
+  const applyTabInsertSlot = useCallback(
+    (clientX: number, clientY: number) => {
+      const session = tabDragSession.current;
+      if (!session?.dragging) return;
+      const insertSlot = computeTabInsertSlot(clientX, clientY);
+      if (insertSlot === session.insertSlot) return;
+      session.insertSlot = insertSlot;
+      setTabDrag({ id: session.id, insertSlot });
+    },
+    [computeTabInsertSlot],
+  );
+
+  const tickTabAutoScroll = useCallback(() => {
+    tabAutoScrollRaf.current = null;
+    const root = tabsRef.current;
+    const session = tabDragSession.current;
+    const dir = tabAutoScrollDir.current;
+    if (!root || !dir || !session?.dragging || prefsRef.current.tabLayout === "wrap") {
+      stopTabAutoScroll();
+      return;
+    }
+    root.scrollLeft += dir * TAB_AUTO_SCROLL_SPEED;
+    applyTabInsertSlot(session.lastX, session.lastY);
+    tabAutoScrollRaf.current = window.requestAnimationFrame(tickTabAutoScroll);
+  }, [applyTabInsertSlot, stopTabAutoScroll]);
+
+  const updateTabAutoScroll = useCallback(
+    (clientX: number) => {
+      const root = tabsRef.current;
+      if (!root || prefsRef.current.tabLayout === "wrap") {
+        stopTabAutoScroll();
+        return;
+      }
+      const rect = root.getBoundingClientRect();
+      let dir = 0;
+      if (clientX < rect.left + TAB_AUTO_SCROLL_EDGE) dir = -1;
+      else if (clientX > rect.right - TAB_AUTO_SCROLL_EDGE) dir = 1;
+      if (dir === tabAutoScrollDir.current) {
+        if (dir && tabAutoScrollRaf.current == null) {
+          tabAutoScrollRaf.current = window.requestAnimationFrame(tickTabAutoScroll);
+        }
+        return;
+      }
+      tabAutoScrollDir.current = dir;
+      if (!dir) {
+        stopTabAutoScroll();
+        return;
+      }
+      if (tabAutoScrollRaf.current == null) {
+        tabAutoScrollRaf.current = window.requestAnimationFrame(tickTabAutoScroll);
+      }
+    },
+    [stopTabAutoScroll, tickTabAutoScroll],
+  );
+
+  const reorderDocs = useCallback((from: number, insertSlot: number) => {
+    setDocs((prev) => {
+      if (from < 0 || from >= prev.length) return prev;
+      let to = insertSlot;
+      if (from < insertSlot) to = insertSlot - 1;
+      if (to === from || to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      docsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const endTabDrag = useCallback(
+    (commit: boolean) => {
+      const session = tabDragSession.current;
+      tabDragSession.current = null;
+      stopTabAutoScroll();
+      setTabDrag(null);
+      if (!session?.dragging) return;
+      tabDragSuppressClick.current = true;
+      if (commit) reorderDocs(session.fromIndex, session.insertSlot);
+    },
+    [reorderDocs, stopTabAutoScroll],
+  );
+
+  const onTabMouseDown = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>, id: string) => {
+      if (event.button !== 0) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".x")) return;
+      const fromIndex = docsRef.current.findIndex((d) => d.id === id);
+      if (fromIndex < 0) return;
+      event.preventDefault();
+      tabDragSuppressClick.current = false;
+      tabDragSession.current = {
+        id,
+        startX: event.clientX,
+        startY: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        dragging: false,
+        insertSlot: fromIndex,
+        fromIndex,
+      };
+
+      const onMove = (ev: MouseEvent) => {
+        const session = tabDragSession.current;
+        if (!session) return;
+        session.lastX = ev.clientX;
+        session.lastY = ev.clientY;
+        const dx = ev.clientX - session.startX;
+        const dy = ev.clientY - session.startY;
+        if (!session.dragging) {
+          if (dx * dx + dy * dy < TAB_DRAG_THRESHOLD * TAB_DRAG_THRESHOLD) return;
+          session.dragging = true;
+          switchTab(session.id);
+          const insertSlot = computeTabInsertSlot(ev.clientX, ev.clientY);
+          session.insertSlot = insertSlot;
+          setTabDrag({ id: session.id, insertSlot });
+          updateTabAutoScroll(ev.clientX);
+          return;
+        }
+        applyTabInsertSlot(ev.clientX, ev.clientY);
+        updateTabAutoScroll(ev.clientX);
+      };
+
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        endTabDrag(true);
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [
+      applyTabInsertSlot,
+      computeTabInsertSlot,
+      endTabDrag,
+      switchTab,
+      updateTabAutoScroll,
+    ],
+  );
+
+  const onTabClick = useCallback(
+    (id: string) => {
+      if (tabDragSuppressClick.current) {
+        tabDragSuppressClick.current = false;
+        return;
+      }
+      switchTab(id);
+    },
+    [switchTab],
+  );
 
   const performCloseTab = useCallback((id: string) => {
     const current = docsRef.current;
@@ -768,7 +992,8 @@ export default function App() {
     allowCloseRef.current = true;
     if (!isTauri()) return;
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    await getCurrentWindow().close();
+    // destroy() bypasses CloseRequested; close() would re-enter the handler.
+    await getCurrentWindow().destroy();
   };
 
   const resolveClosePrompt = async (action: "save" | "discard" | "cancel") => {
@@ -1061,30 +1286,60 @@ export default function App() {
         onCycleTheme={appearance.setMode}
       />
 
-      <div className="tabs" data-layout={prefs.tabLayout} data-width={prefs.tabMaxWidth}>
-        {docs.map((d) => (
-          <div
-            key={d.id}
-            className={`tab${d.id === activeId ? " active" : ""}`}
-            onClick={() => switchTab(d.id)}
-            title={d.path || d.name}
-          >
-            <span className="name">
-              {d.dirty ? <span className="dirty">● </span> : null}
-              {d.name}
-            </span>
-            <button
-              type="button"
-              className="x"
-              onClick={(e) => {
-                e.stopPropagation();
-                requestCloseTab(d.id);
-              }}
+      <div
+        ref={tabsRef}
+        className={`tabs${tabDrag ? " is-dragging" : ""}`}
+        role="tablist"
+        data-layout={prefs.tabLayout}
+        data-width={prefs.tabMaxWidth}
+      >
+        {docs.map((d, index) => {
+          const dragging = tabDrag?.id === d.id;
+          const fromIndex =
+            tabDrag != null ? docs.findIndex((t) => t.id === tabDrag.id) : -1;
+          const slot = tabDrag?.insertSlot ?? -1;
+          const moved =
+            fromIndex >= 0 && slot !== fromIndex && slot !== fromIndex + 1;
+          const dropBefore = moved && !dragging && slot === index;
+          const dropAfter =
+            moved && !dragging && index === docs.length - 1 && slot === docs.length;
+          return (
+            <div
+              key={d.id}
+              role="tab"
+              aria-selected={d.id === activeId}
+              data-tab-id={d.id}
+              className={[
+                "tab",
+                d.id === activeId ? "active" : "",
+                dragging ? "dragging" : "",
+                dropBefore ? "drop-before" : "",
+                dropAfter ? "drop-after" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={() => onTabClick(d.id)}
+              onMouseDown={(e) => onTabMouseDown(e, d.id)}
+              title={d.path || d.name}
             >
-              ×
-            </button>
-          </div>
-        ))}
+              <span className="name">
+                {d.dirty ? <span className="dirty">● </span> : null}
+                {d.name}
+              </span>
+              <button
+                type="button"
+                className="x"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  requestCloseTab(d.id);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
         <button type="button" className="tab-add" title="打开" onClick={() => openFile()}>
           +
         </button>
@@ -1312,37 +1567,51 @@ export default function App() {
         onToast={showToast}
       />
 
-      <div className={`dialog${closePrompt ? " show" : ""}`}>
-        <h2>未保存的更改</h2>
-        <p className="dialog-note">
-          {closePrompt?.kind === "window"
-            ? "关闭应用前，下列文件还有未保存的更改："
-            : "关闭前，下列文件还有未保存的更改："}
-        </p>
-        <ul className="unsaved-list">
-          {(closePrompt?.tabIds ?? [])
-            .map((id) => docs.find((d) => d.id === id))
-            .filter((d): d is DocTab => !!d)
-            .map((d) => (
-              <li key={d.id}>{d.name}</li>
-            ))}
-        </ul>
-        <div className="actions">
-          <button
-            type="button"
-            className="primary"
-            onClick={() => void resolveClosePrompt("save")}
+      {closePrompt ? (
+        <div
+          className="unsaved-backdrop"
+          role="presentation"
+          onClick={() => void resolveClosePrompt("cancel")}
+        >
+          <div
+            className="dialog show unsaved-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unsaved-title"
+            onClick={(e) => e.stopPropagation()}
           >
-            保存
-          </button>
-          <button type="button" onClick={() => void resolveClosePrompt("discard")}>
-            不保存并关闭
-          </button>
-          <button type="button" onClick={() => void resolveClosePrompt("cancel")}>
-            取消
-          </button>
+            <h2 id="unsaved-title">未保存的更改</h2>
+            <p className="dialog-note">
+              {closePrompt.kind === "window"
+                ? "关闭应用前，下列文件还有未保存的更改："
+                : "关闭前，下列文件还有未保存的更改："}
+            </p>
+            <ul className="unsaved-list">
+              {closePrompt.tabIds
+                .map((id) => docs.find((d) => d.id === id))
+                .filter((d): d is DocTab => !!d)
+                .map((d) => (
+                  <li key={d.id}>{d.name}</li>
+                ))}
+            </ul>
+            <div className="actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void resolveClosePrompt("save")}
+              >
+                保存
+              </button>
+              <button type="button" onClick={() => void resolveClosePrompt("discard")}>
+                不保存并关闭
+              </button>
+              <button type="button" onClick={() => void resolveClosePrompt("cancel")}>
+                取消
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className={`dialog${gotoOpen ? " show" : ""}`}>
         <h2>转到</h2>
