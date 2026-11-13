@@ -154,9 +154,12 @@ function buildTheme(): Extension {
     ".cm-activeLine": {
       backgroundColor: "color-mix(in srgb, var(--accent) 70%, transparent)",
     },
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection":
+    "&.has-text-selection .cm-activeLine": {
+      backgroundColor: "transparent",
+    },
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, ::selection":
       {
-        backgroundColor: "var(--accent)",
+        backgroundColor: "var(--selection)",
       },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: "var(--foreground)",
@@ -303,6 +306,12 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
           }),
           EditorView.updateListener.of((update) => {
             const id = activeIdRef.current;
+            if (update.selectionSet || update.docChanged) {
+              update.view.dom.classList.toggle(
+                "has-text-selection",
+                update.state.selection.ranges.some((range) => !range.empty),
+              );
+            }
             if (update.docChanged) {
               docVersionRef.current += 1;
               callbacksRef.current.onDocVersion(docVersionRef.current);

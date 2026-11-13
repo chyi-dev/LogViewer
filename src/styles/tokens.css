@@ -53,6 +53,7 @@
   --fault: var(--destructive);
   --fault-soft: color-mix(in srgb, var(--destructive) 16%, transparent);
   --select: var(--accent);
+  --selection: rgb(64 156 255 / 0.55);
   --hit: var(--warning-bg);
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
@@ -79,6 +80,7 @@ html.dark {
   --muted-foreground: rgb(151 152 157);
   --accent: rgb(46 47 51);
   --accent-foreground: rgb(221 221 226);
+  --selection: rgb(80 160 255 / 0.42);
   --destructive: rgb(243 98 95);
   --border: rgb(110 110 114 / 0.28);
   --input: rgb(110 110 114 / 0.34);

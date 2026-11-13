@@ -1,6 +1,6 @@
 ::selection {
-  background: var(--accent);
-  color: var(--accent-foreground);
+  background: var(--selection);
+  color: var(--foreground);
 }
 
 * { box-sizing: border-box; }
